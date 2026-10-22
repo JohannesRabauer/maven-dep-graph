@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Zipper</title>
+    <style>
+        :root { color-scheme: light dark; --accent: #3b6fd8; --border: #8888; }
+        body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem; }
+        h1 { margin-bottom: .25rem; }
+        .hint { opacity: .7; margin-top: 0; }
+        #drop {
+            border: 2px dashed var(--border); border-radius: 12px; padding: 3rem 1rem;
+            text-align: center; cursor: pointer; transition: border-color .15s, background .15s;
+        }
+        #drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+        ul { padding-left: 1.2rem; }
+        li span { opacity: .6; font-size: .9em; }
+        .row { display: flex; gap: .5rem; margin-top: 1rem; }
+        input[type=text] { flex: 1; padding: .5rem; }
+        button { padding: .5rem 1rem; cursor: pointer; }
+        button:disabled { cursor: default; opacity: .5; }
+        #status { min-height: 1.5em; }
+    </style>
+</head>
+<body>
+<h1>Zipper</h1>
+<p class="hint">Drop files below, then download them as one zip. Up to <span th:text="${maxSizeMb}">200</span> MB per zip.</p>
+
+<div id="drop">Drop files here or click to choose</div>
+<input id="picker" type="file" multiple hidden>
+
+<ul id="list"></ul>
+
+<div class="row">
+    <input id="name" type="text" value="archive" aria-label="Zip file name">
+    <button id="clear" disabled>Clear</button>
+    <button id="zip" disabled>Download zip</button>
+</div>
+<p id="status"></p>
+
+<script>
+    const drop = document.getElementById('drop');
+    const picker = document.getElementById('picker');
+    const list = document.getElementById('list');
+    const zipButton = document.getElementById('zip');
+    const clearButton = document.getElementById('clear');
+    const status = document.getElementById('status');
+    let files = [];
+
+    const formatSize = bytes => bytes < 1024 ? bytes + ' B'
+        : bytes < 1024 * 1024 ? (bytes / 1024).toFixed(1) + ' KB'
+        : (bytes / 1024 / 1024).toFixed(1) + ' MB';
+
+    function render() {
+        list.replaceChildren(...files.map(f => {
+            const li = document.createElement('li');
+            li.textContent = f.name + ' ';
+            const size = document.createElement('span');
+            size.textContent = formatSize(f.size);
+            li.append(size);
+            return li;
+        }));
+        zipButton.disabled = clearButton.disabled = files.length === 0;
+    }
+
+    function add(newFiles) {
+        files.push(...newFiles);
+        status.textContent = '';
+        render();
+    }
+
+    drop.addEventListener('click', () => picker.click());
+    picker.addEventListener('change', () => { add(picker.files); picker.value = ''; });
+    ['dragenter', 'dragover'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add('over'); }));
+    ['dragleave', 'drop'].forEach(e => drop.addEventListener(e, () => drop.classList.remove('over')));
+    drop.addEventListener('drop', ev => { ev.preventDefault(); add(ev.dataTransfer.files); });
+
+    clearButton.addEventListener('click', () => { files = []; status.textContent = ''; render(); });
+
+    zipButton.addEventListener('click', async () => {
+        const form = new FormData();
+        files.forEach(f => form.append('files', f));
+        form.append('name', document.getElementById('name').value);
+        zipButton.disabled = true;
+        status.textContent = 'Zipping…';
+        try {
+            const response = await fetch('/zip', { method: 'POST', body: form });
+            if (!response.ok) throw new Error('Server answered ' + response.status);
+            const fileName = /filename="?([^"]+)"?/.exec(response.headers.get('Content-Disposition'))?.[1] ?? 'archive.zip';
+            const url = URL.createObjectURL(await response.blob());
+            const link = Object.assign(document.createElement('a'), { href: url, download: fileName });
+            link.click();
+            URL.revokeObjectURL(url);
+            status.textContent = 'Downloaded ' + fileName;
+        } catch (e) {
+            status.textContent = 'Could not create zip: ' + e.message;
+        } finally {
+            zipButton.disabled = files.length === 0;
+        }
+    });
+</script>
+</body>
+</html>

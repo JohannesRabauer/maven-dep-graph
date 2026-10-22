@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "zipper",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": ["-q", "-f", "demo-project/pom.xml", "spring-boot:run"],
+      "port": 8080
+    }
+  ]
+}
