@@ -122,42 +122,76 @@
     return triplesOf(model, edges).length;
   }
 
+  const MAX_EXPANSIONS = 200000;
+
+  function distancesTo(model, nodeId, moduleId, scopes) {
+    const dist = new Map([[nodeId, 0]]);
+    const queue = [nodeId];
+    for (let i = 0; i < queue.length; i++) {
+      const id = queue[i];
+      for (const e of model.inEdges.get(id) || []) {
+        if (e.module !== moduleId || !edgeEnabled(e, scopes) || dist.has(e.from)) continue;
+        dist.set(e.from, dist.get(id) + 1);
+        queue.push(e.from);
+      }
+    }
+    return dist;
+  }
+
+  // Best-first enumeration: partial paths are ordered by length plus the exact remaining
+  // distance, so complete paths come out shortest first and dead ends are never extended.
+  function modulePaths(model, moduleId, nodeId, scopes, max) {
+    const dist = distancesTo(model, nodeId, moduleId, scopes);
+    if (!dist.has(moduleId)) return [];
+    const buckets = [];
+    function push(path) {
+      const f = path.length - 1 + dist.get(path[path.length - 1]);
+      (buckets[f] || (buckets[f] = [])).push(path);
+    }
+    push([moduleId]);
+    const found = [];
+    let expansions = 0;
+    for (let f = 0; f < buckets.length && found.length < max; f++) {
+      const bucket = buckets[f];
+      while (bucket && bucket.length && found.length < max && expansions++ < MAX_EXPANSIONS) {
+        const path = bucket.pop();
+        const last = path[path.length - 1];
+        if (last === nodeId) {
+          found.push(path);
+          continue;
+        }
+        const tried = new Set();
+        const outs = model.outEdges.get(last) || [];
+        for (let k = outs.length - 1; k >= 0; k--) {
+          const e = outs[k];
+          if (e.module !== moduleId || !edgeEnabled(e, scopes) || !dist.has(e.to)
+              || tried.has(e.to) || path.includes(e.to)) continue;
+          tried.add(e.to);
+          push(path.concat(e.to));
+        }
+      }
+      if (expansions >= MAX_EXPANSIONS) break;
+    }
+    return found;
+  }
+
   function pathsFromRoot(model, nodeId, scopes, limit) {
     const max = limit === undefined ? 50 : limit;
     const out = [];
     const seen = new Set();
     for (const m of Array.from(model.moduleIds).sort()) {
-      if (m === nodeId) {
-        out.push([m]);
-        continue;
-      }
-      let queue = [[m]];
-      while (queue.length) {
-        const next = [];
-        for (const path of queue) {
-          const last = path[path.length - 1];
-          for (const e of model.outEdges.get(last) || []) {
-            if (e.module !== m || !edgeEnabled(e, scopes) || path.includes(e.to)) continue;
-            const np = path.concat(e.to);
-            if (e.to === nodeId) {
-              const key = np.join('\u0000');
-              if (!seen.has(key)) {
-                seen.add(key);
-                out.push(np);
-              }
-            } else {
-              next.push(np);
-            }
-          }
+      const paths = m === nodeId ? [[m]] : modulePaths(model, m, nodeId, scopes, max);
+      for (const p of paths) {
+        const key = p.join('\u0000');
+        if (!seen.has(key)) {
+          seen.add(key);
+          out.push(p);
         }
-        queue = next;
-        if (out.length > max * 20) break;
       }
     }
     out.sort(function (a, b) { return a.length - b.length; });
     return out.slice(0, max);
   }
-
   function versionCompare(a, b) {
     const pa = String(a).split(/[.\-]/);
     const pb = String(b).split(/[.\-]/);
@@ -228,7 +262,7 @@
     const hits = [];
     for (const n of model.nodesById.values()) {
       const text = model.moduleIds.has(n.id) ? n.id : n.groupId + ':' + n.artifactId;
-      if (text.toLowerCase().includes(q) || n.id.toLowerCase().includes(q)) hits.push(n.id);
+      if (text.toLowerCase().includes(q)) hits.push(n.id);
     }
     hits.sort(function (a, b) {
       return (model.moduleIds.has(b) - model.moduleIds.has(a)) || cmp(a, b);

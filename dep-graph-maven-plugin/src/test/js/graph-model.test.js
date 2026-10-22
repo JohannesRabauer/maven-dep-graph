@@ -76,6 +76,73 @@ test('pathsFromRootListsEveryModulePath', () => {
   assert.strictEqual(M.pathsFromRoot(m, c.id, compile, 1).length, 1);
 });
 
+test('pathsFromRoot returns [] quickly for unreachable target in layered diamonds', () => {
+  const nodes = [], edges = [];
+  let prev = ['m1'];
+  for (let i = 0; i < 30; i++) {
+    const l = node('g:l' + i, '1'), r = node('g:r' + i, '1'), j = node('g:j' + i, '1');
+    nodes.push(l, r, j);
+    for (const p of prev) edges.push(edge(p, l.id, 'm1'), edge(p, r.id, 'm1'));
+    edges.push(edge(l.id, j.id, 'm1'), edge(r.id, j.id, 'm1'));
+    prev = [j.id];
+  }
+  const target = node('g:target', '1');
+  nodes.push(target);
+  edges.push(edge('m1', target.id, 'm1', { scope: 'test' }));
+  const m = model(['m1'], nodes, edges);
+  const start = performance.now();
+  assert.deepStrictEqual(M.pathsFromRoot(m, target.id, compile), []);
+  assert.ok(performance.now() - start < 1000);
+});
+
+test('pathsFromRoot reaches far target in layered diamonds with limit', () => {
+  const nodes = [], edges = [];
+  let prev = 'm1';
+  for (let i = 0; i < 30; i++) {
+    const l = node('g:l' + i, '1'), r = node('g:r' + i, '1'), j = node('g:j' + i, '1');
+    nodes.push(l, r, j);
+    edges.push(edge(prev, l.id, 'm1'), edge(prev, r.id, 'm1'), edge(l.id, j.id, 'm1'), edge(r.id, j.id, 'm1'));
+    prev = j.id;
+  }
+  const m = model(['m1'], nodes, edges);
+  const start = performance.now();
+  const paths = M.pathsFromRoot(m, prev, compile, 5);
+  assert.strictEqual(paths.length, 5);
+  assert.ok(paths.every(p => p.length === 61 && p[0] === 'm1' && p[60] === prev));
+  assert.ok(performance.now() - start < 1000);
+});
+
+test('pathsFromRoot handles cycles', () => {
+  const a = node('g:a', '1'), b = node('g:b', '1'), c = node('g:c', '1');
+  const m = model(['m1'], [a, b, c], [
+    edge('m1', a.id, 'm1'), edge(a.id, b.id, 'm1'), edge(b.id, a.id, 'm1'), edge(b.id, c.id, 'm1')]);
+  assert.deepStrictEqual(M.pathsFromRoot(m, c.id, compile), [['m1', a.id, b.id, c.id]]);
+});
+
+test('pathsFromRoot isolates edges by module', () => {
+  const a = node('g:a', '1'), c = node('g:c', '1');
+  const m = model(['m1', 'm2'], [a, c], [
+    edge('m1', a.id, 'm1'), edge(a.id, c.id, 'm2')]);
+  assert.deepStrictEqual(M.pathsFromRoot(m, c.id, compile), []);
+});
+
+test('pathsFromRoot honours scope filter', () => {
+  const a = node('g:a', '1'), c = node('g:c', '1');
+  const m = model(['m1'], [a, c], [
+    edge('m1', a.id, 'm1'), edge(a.id, c.id, 'm1', { scope: 'test' })]);
+  assert.deepStrictEqual(M.pathsFromRoot(m, c.id, compile), []);
+  assert.deepStrictEqual(M.pathsFromRoot(m, c.id, all), [['m1', a.id, c.id]]);
+});
+
+test('pathsFromRoot orders shortest first and applies limit', () => {
+  const a = node('g:a', '1'), b = node('g:b', '1'), c = node('g:c', '1');
+  const m = model(['m1'], [a, b, c], [
+    edge('m1', a.id, 'm1'), edge(a.id, b.id, 'm1'), edge(b.id, c.id, 'm1'),
+    edge('m1', c.id, 'm1', { status: 'DROPPED', requestedVersion: '0' })]);
+  assert.deepStrictEqual(M.pathsFromRoot(m, c.id, compile), [['m1', c.id], ['m1', a.id, b.id, c.id]]);
+  assert.deepStrictEqual(M.pathsFromRoot(m, c.id, compile, 1), [['m1', c.id]]);
+});
+
 test('hiddenNodeKeepsSharedDescendant', () => {
   const a = node('g:a', '1'), b = node('g:b', '1'), c = node('g:c', '1'), d = node('g:d', '1');
   const m = model(['m1'], [a, b, c, d], [
@@ -126,6 +193,8 @@ test('searchMatchesGroupAndArtifact', () => {
   assert.deepStrictEqual(M.search(m, 'JACKSON'), [j.id]);
   assert.deepStrictEqual(M.search(m, ''), []);
   assert.deepStrictEqual(M.search(m, 'm1'), ['m1']);
+  assert.deepStrictEqual(M.search(m, '2.19'), []);
+  assert.deepStrictEqual(M.search(m, ':jar'), []);
 });
 
 test('stepConflictWraps', () => {
