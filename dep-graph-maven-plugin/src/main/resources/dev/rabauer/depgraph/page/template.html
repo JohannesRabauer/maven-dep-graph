@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dependency Graph: {{TITLE}}</title>
+<style>
+/*{{CSS}}*/
+</style>
+</head>
+<body>
+<header id="topbar">
+  <input id="search" type="search" placeholder="Search artifacts">
+  <div id="scopes"></div>
+  <span id="conflict-badge"></span>
+  <button id="managed-toggle" type="button">Managed</button>
+  <button id="drift-toggle" type="button">Drift</button>
+  <button id="theme-toggle" type="button">Theme</button>
+</header>
+<div id="filter-bar"></div>
+<div id="cy"></div>
+<aside id="panel" hidden></aside>
+<div id="context-menu" hidden></div>
+<div id="warning-dialog" hidden></div>
+<script>
+/*{{VENDOR}}*/
+</script>
+<script>
+/*{{MODEL}}*/
+</script>
+<script type="application/json" id="dep-graph-data">{{DATA}}</script>
+<script>
+/*{{APP}}*/
+</script>
+</body>
+</html>
