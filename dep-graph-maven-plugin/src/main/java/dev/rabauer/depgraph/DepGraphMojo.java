@@ -1,4 +1,4 @@
-package de.rabauer.depgraph;
+package dev.rabauer.depgraph;
 
 import java.io.File;
 import java.io.IOException;

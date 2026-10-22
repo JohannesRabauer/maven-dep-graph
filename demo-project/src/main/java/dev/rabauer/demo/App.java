@@ -1,4 +1,4 @@
-package de.rabauer.demo;
+package dev.rabauer.demo;
 
 public final class App
 {
