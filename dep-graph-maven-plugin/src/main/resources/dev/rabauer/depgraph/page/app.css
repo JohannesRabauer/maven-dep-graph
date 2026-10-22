@@ -1,0 +1,211 @@
+:root {
+  --bg: #0F172A;
+  --surface: #1B2336;
+  --panel: #1E293B;
+  --chip: #272F42;
+  --text: #F8FAFC;
+  --muted: #94A3B8;
+  --border: #475569;
+  --module: #22C55E;
+  --on-module: #0F172A;
+  --conflict: #EF4444;
+  --managed: #A78BFA;
+  --managed-bg: #2E1065;
+  --managed-text: #DDD6FE;
+  --newer: #06B6D4;
+  --drift: #6B7FA8;
+  --shadow: rgba(0, 0, 0, .5);
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+}
+
+html[data-theme="light"] {
+  --bg: #F8FAFC;
+  --surface: #E2E8F0;
+  --panel: #FFFFFF;
+  --chip: #FFFFFF;
+  --text: #0F172A;
+  --muted: #475569;
+  --border: #94A3B8;
+  --managed-bg: #EDE9FE;
+  --managed-text: #4C1D95;
+  --shadow: rgba(15, 23, 42, .25);
+}
+
+@media (prefers-color-scheme: light) {
+  html[data-theme="auto"] {
+    --bg: #F8FAFC;
+    --surface: #E2E8F0;
+    --panel: #FFFFFF;
+    --chip: #FFFFFF;
+    --text: #0F172A;
+    --muted: #475569;
+    --border: #94A3B8;
+    --managed-bg: #EDE9FE;
+    --managed-text: #4C1D95;
+    --shadow: rgba(15, 23, 42, .25);
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto 1fr;
+  background: var(--bg);
+  color: var(--text);
+  font: 12px var(--sans);
+  overflow: hidden;
+}
+
+#topbar, #filter-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+#filter-bar { padding: 5px 10px; }
+#filter-bar:empty { display: none; }
+
+#title { font-weight: 600; }
+#stats { color: var(--muted); margin-right: 8px; }
+
+#search {
+  flex: 1;
+  min-width: 140px;
+  background: var(--chip);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: var(--text);
+  font: inherit;
+}
+
+#scopes { display: flex; gap: 6px; }
+
+.chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  font: inherit;
+  cursor: pointer;
+}
+
+.chip[aria-pressed="true"] {
+  background: var(--module);
+  color: var(--on-module);
+  border-color: var(--module);
+  font-weight: 600;
+}
+
+#conflict-badge { cursor: default; }
+
+#conflict-badge.has-conflicts {
+  background: var(--conflict);
+  color: #0F172A;
+  border-color: var(--conflict);
+  font-weight: 700;
+}
+
+#managed-toggle[aria-pressed="true"] {
+  background: var(--managed-bg);
+  color: var(--managed-text);
+  border-color: var(--managed);
+  font-weight: 600;
+}
+
+#drift-toggle[aria-pressed="true"] {
+  background: var(--drift);
+  color: #0F172A;
+  border-color: var(--drift);
+  font-weight: 600;
+}
+
+.sep { width: 1px; height: 18px; background: var(--border); }
+
+#cy, #badges { grid-row: 3; grid-column: 1; }
+#cy { background: var(--bg); min-width: 0; }
+
+#badges {
+  position: relative;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.badge {
+  position: absolute;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--conflict);
+  color: #0F172A;
+  font: 700 11px var(--sans);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%);
+}
+
+#panel {
+  grid-row: 3;
+  grid-column: 2;
+  width: 300px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  padding: 12px;
+  overflow: auto;
+}
+
+#context-menu, #warning-dialog {
+  position: fixed;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px var(--shadow);
+  padding: 8px;
+  z-index: 10;
+}
+
+#warning-dialog {
+  left: 50%;
+  top: 30%;
+  transform: translateX(-50%);
+  max-width: 340px;
+}
+
+#warning-dialog p { margin: 0 0 10px; }
+#warning-dialog .actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+#warning-dialog button {
+  font: inherit;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--chip);
+  color: var(--text);
+  cursor: pointer;
+}
+
+#warning-dialog button[data-act="confirm"] {
+  background: var(--module);
+  border-color: var(--module);
+  color: var(--on-module);
+  font-weight: 600;
+}
+
+.muted { color: var(--muted); }
+.mono { font-family: var(--mono); }
+
+[hidden] { display: none !important; }

@@ -10,8 +10,11 @@
 </head>
 <body>
 <header id="topbar">
+  <span id="title"></span>
+  <span id="stats"></span>
   <input id="search" type="search" placeholder="Search artifacts">
   <div id="scopes"></div>
+  <span class="sep"></span>
   <span id="conflict-badge"></span>
   <button id="managed-toggle" type="button">Managed</button>
   <button id="drift-toggle" type="button">Drift</button>
@@ -19,6 +22,7 @@
 </header>
 <div id="filter-bar"></div>
 <div id="cy"></div>
+<div id="badges" aria-hidden="true"></div>
 <aside id="panel" hidden></aside>
 <div id="context-menu" hidden></div>
 <div id="warning-dialog" hidden></div>
