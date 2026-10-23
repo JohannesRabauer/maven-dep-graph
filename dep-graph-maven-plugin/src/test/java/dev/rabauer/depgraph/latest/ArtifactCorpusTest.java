@@ -79,7 +79,9 @@ class ArtifactCorpusTest {
             for (String v : stable) {
                 Latest latest = VersionClassifier.classify(v, stable);
                 String sameMajor = latest.latestSameMajor();
-                if (sameMajor != null && !VersionClassifier.major(sameMajor).equals(VersionClassifier.major(v))) {
+                // Date-stamped versions ("20231013") are one line, so their "major" is the whole dated line.
+                boolean dated = VersionClassifier.major(v).length() >= 8;
+                if (sameMajor != null && !dated && !VersionClassifier.major(sameMajor).equals(VersionClassifier.major(v))) {
                     violations.add(artifact + " " + v + ": same major " + sameMajor);
                 }
                 if (latest.latestOverall() != null

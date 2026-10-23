@@ -76,7 +76,8 @@ public final class VersionClassifier {
                 continue;
             }
             overall = v;
-            if (major(v).equals(currentMajor)) {
+            // Dated versions form one line: "20231013" to "20250107" is an update, not a new major.
+            if (currentDated || major(v).equals(currentMajor)) {
                 sameMajor = v;
             }
         }
