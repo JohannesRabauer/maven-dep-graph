@@ -127,7 +127,8 @@ body {
 
 #drift-toggle[aria-pressed="true"] {
   background: var(--drift);
-  color: #0F172A;
+  /* #0F172A only reaches 4.44:1 on the drift blue, black reaches 5.23:1. */
+  color: #000000;
   border-color: var(--drift);
   font-weight: 600;
 }

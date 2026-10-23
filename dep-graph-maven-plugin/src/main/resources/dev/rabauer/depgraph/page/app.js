@@ -13,12 +13,15 @@
     dark: {
       text: '#F8FAFC', muted: '#94A3B8', surface: '#1E293B', border: '#475569',
       module: '#22C55E', onModule: '#0F172A', managedText: '#DDD6FE', managedFill: '#2E1065',
-      edge: '#64748B'
+      edge: '#64748B',
+      // Label colours: the strokes keep the accent hue, the text needs 4.5:1 on the surface.
+      managedLabel: '#A78BFA', conflictLabel: '#F87171'
     },
     light: {
       text: '#0F172A', muted: '#475569', surface: '#FFFFFF', border: '#94A3B8',
       module: '#22C55E', onModule: '#0F172A', managedText: '#4C1D95', managedFill: '#EDE9FE',
-      edge: '#475569'
+      edge: '#475569',
+      managedLabel: '#6D28D9', conflictLabel: '#B91C1C'
     }
   };
   const CONFLICT = '#EF4444';
@@ -252,6 +255,7 @@
 
   function edgeElement(e) {
     const wants = e.requestedVersions.length ? 'wants ' + e.requestedVersions.join(', ') : '';
+    const managed = e.status === 'MANAGED' && state.showManaged;
     return {
       group: 'edges',
       data: {
@@ -259,8 +263,9 @@
         source: e.from,
         target: e.to,
         status: e.status,
+        managed: managed ? 1 : 0,
         optional: e.optional ? 1 : 0,
-        label: e.status === 'DROPPED' || (e.status === 'MANAGED' && state.showManaged) ? wants : ''
+        label: e.status === 'DROPPED' || managed ? wants : ''
       }
     };
   }
@@ -285,20 +290,26 @@
     }
 
     const add = [];
-    let added = false;
+    let changed = false;
     cy.batch(function () {
       cy.nodes().forEach(function (n) {
-        if (!view.visible.has(n.id())) n.remove();
+        if (!view.visible.has(n.id())) {
+          n.remove();
+          changed = true;
+        }
       });
       cy.edges().forEach(function (e) {
-        if (!wantedEdges.has(e.id())) e.remove();
+        if (!wantedEdges.has(e.id())) {
+          e.remove();
+          changed = true;
+        }
       });
       for (const id of view.visible) {
         const existing = cy.getElementById(id);
         const element = nodeElement(id, ctx);
         if (existing.empty()) {
           add.push(element);
-          added = true;
+          changed = true;
         } else {
           updateData(existing, element.data);
         }
@@ -307,14 +318,14 @@
         const existing = cy.getElementById(entry[0]);
         if (existing.empty()) {
           add.push(entry[1]);
-          added = true;
+          changed = true;
         } else {
           updateData(existing, entry[1].data);
         }
       }
       cy.add(add);
     });
-    return added;
+    return changed;
   }
 
   function runLayout() {
@@ -354,14 +365,22 @@
 
   let badgeCounts = new Map();
 
-  function render(force) {
+  /**
+   * Draws the current state. Returns false when the size guard deferred the draw, so callers can
+   * hold back anything that assumes the new elements are on the canvas. `after` runs once a
+   * deferred draw has been confirmed and applied.
+   */
+  function render(force, after) {
     const view = computeView();
     if (!force && view.visible.size > MAX_VISIBLE) {
       confirmLarge(view.visible.size, function (ok) {
-        if (ok) render(true);
-        else restore(lastGood);
+        if (!ok) {
+          restore(lastGood);
+          return;
+        }
+        if (render(true) && after) after();
       });
-      return;
+      return false;
     }
     const structureChanged = diff(view);
     if (structureChanged) runLayout();
@@ -369,6 +388,7 @@
     paintBadges(badgeCounts);
     applySelection();
     lastGood = snapshot();
+    return true;
   }
 
   function confirmLarge(count, done) {
@@ -396,6 +416,7 @@
     const act = ev.target.dataset ? ev.target.dataset.act : null;
     if (!act) return;
     el.warning.hidden = true;
+    el.warning.textContent = '';
     const done = pendingConfirm;
     pendingConfirm = null;
     if (done) done(act === 'confirm');
@@ -424,9 +445,15 @@
     if (path) {
       for (let i = 0; i < path.length - 1; i++) state.expanded.add(path[i]);
     }
-    render();
-    select(nodeId);
-    centre(nodeId);
+    // Only select once the node is really on the canvas: the draw can be deferred by the guard, and
+    // a node that no enabled scope reaches stays invisible even after a successful draw.
+    const done = function () {
+      if (cy.getElementById(nodeId).empty()) return false;
+      select(nodeId);
+      centre(nodeId);
+      return true;
+    };
+    return render(false, done) ? done() : false;
   }
 
   function style(palette) {
@@ -484,8 +511,8 @@
         }
       },
       { selector: 'edge[optional = 1]', style: { 'line-style': 'dotted' } },
-      { selector: 'edge[status = "MANAGED"]', style: { 'line-style': 'dashed', 'line-color': MANAGED, 'target-arrow-color': MANAGED, 'color': MANAGED, 'text-background-opacity': 1 } },
-      { selector: 'edge[status = "DROPPED"]', style: { 'line-style': 'dashed', 'line-color': CONFLICT, 'target-arrow-color': CONFLICT, 'color': CONFLICT, 'text-background-opacity': 1 } }
+      { selector: 'edge[managed = 1]', style: { 'line-style': 'dashed', 'line-color': MANAGED, 'target-arrow-color': MANAGED, 'color': palette.managedLabel, 'text-background-opacity': 1 } },
+      { selector: 'edge[status = "DROPPED"]', style: { 'line-style': 'dashed', 'line-color': CONFLICT, 'target-arrow-color': CONFLICT, 'color': palette.conflictLabel, 'text-background-opacity': 1 } }
     ];
   }
 
@@ -573,7 +600,7 @@
     cy: null,
     model: model,
     state: state,
-    render: function () { render(false); },
+    render: function () { return render(false); },
     select: select,
     reveal: reveal,
     onSelect: null
@@ -599,8 +626,8 @@
       const id = ev.target.id();
       if (state.expanded.has(id)) state.expanded.delete(id);
       else state.expanded.add(id);
-      render();
-      select(id);
+      const done = function () { select(id); };
+      if (render(false, done)) done();
     });
     cy.on('pan zoom resize', function () { paintBadges(badgeCounts); });
 
