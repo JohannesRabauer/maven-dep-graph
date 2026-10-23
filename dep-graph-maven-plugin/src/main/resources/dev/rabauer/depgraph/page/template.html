@@ -18,11 +18,14 @@
   <button id="conflict-badge" type="button"></button>
   <button id="managed-toggle" type="button">Managed</button>
   <button id="drift-toggle" type="button">Drift</button>
+  <button id="expand-all" type="button">Expand all</button>
+  <button id="collapse-all" type="button">Collapse all</button>
   <button id="theme-toggle" type="button">Theme</button>
 </header>
 <div id="filter-bar"></div>
 <div id="cy"></div>
 <div id="badges" aria-hidden="true"></div>
+<p id="hint" aria-hidden="true">Click a node to expand it. <span class="badge more">+N</span> shows its hidden dependencies. Right-click for more.</p>
 <aside id="panel" aria-label="Artifact details" hidden></aside>
 <div id="context-menu" role="menu" aria-label="Node actions" hidden></div>
 <p id="cy-help" class="sr-only">Arrow keys move between visible nodes. Enter or Space expands or collapses the focused node. Shift+F10 opens its menu.</p>

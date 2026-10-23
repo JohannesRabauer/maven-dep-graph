@@ -187,12 +187,16 @@ async function target() {
       + "   g.cy.center();"
       + "   g.render();"
       + "   setTimeout(function () {"
-      + "     r(Array.prototype.map.call(document.querySelectorAll('#badges .badge'),"
-      + "       function (b) { return b.textContent; })); }, 600);"
+      + "     r({ conflicts: Array.prototype.map.call(document.querySelectorAll('#badges .badge:not(.more)'),"
+      + "       function (b) { return b.textContent; }),"
+      + "       more: Array.prototype.map.call(document.querySelectorAll('#badges .badge.more'),"
+      + "       function (b) { return b.textContent; }) }); }, 600);"
       + " }, 600); });"
       + "})()");
   check('collapsed modules carry their hidden conflict count',
-      badges.length > 0 && badges.every(function (t) { return Number(t) > 0; }), JSON.stringify(badges));
+      badges.conflicts.length > 0 && badges.conflicts.every(function (t) { return Number(t) > 0; }), JSON.stringify(badges));
+  check('collapsed nodes show how many dependencies they hide',
+      badges.more.length > 0 && badges.more.every(function (t) { return /^\+[1-9]\d*$/.test(t); }), JSON.stringify(badges));
 
   finish(failures.length ? 1 : 0, failures.length ? 'FAILED: ' + failures.join(', ') : 'all keyboard checks passed');
 })().catch((e) => finish(1, 'ERROR ' + e.message));

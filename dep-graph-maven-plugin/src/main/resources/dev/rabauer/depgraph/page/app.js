@@ -55,6 +55,8 @@
     conflictBadge: document.getElementById('conflict-badge'),
     managedToggle: document.getElementById('managed-toggle'),
     driftToggle: document.getElementById('drift-toggle'),
+    expandAll: document.getElementById('expand-all'),
+    collapseAll: document.getElementById('collapse-all'),
     themeToggle: document.getElementById('theme-toggle'),
     filterBar: document.getElementById('filter-bar'),
     cy: document.getElementById('cy'),
@@ -361,26 +363,33 @@
   function paintBadges(counts) {
     el.badges.textContent = '';
     // Below this zoom the nodes are smaller than the badge, so the badges would only form a blur.
-    if (!counts.size || cy.zoom() < 0.6) return;
+    if ((!counts.size && !childCounts.size) || cy.zoom() < 0.6) return;
     const fragment = document.createDocumentFragment();
     let painted = 0;
-    for (const entry of counts) {
-      if (!entry[1] || painted >= BADGE_RENDER_LIMIT) continue;
-      const node = cy.getElementById(entry[0]);
-      if (node.empty()) continue;
-      const pos = node.renderedPosition();
-      const span = document.createElement('span');
-      span.className = 'badge';
-      span.textContent = String(entry[1]);
-      span.style.left = (pos.x + node.renderedWidth() / 2) + 'px';
-      span.style.top = (pos.y - node.renderedHeight() / 2) + 'px';
-      fragment.appendChild(span);
-      painted++;
-    }
+    const paint = function (map, className, text, atBottom) {
+      for (const entry of map) {
+        if (!entry[1] || painted >= BADGE_RENDER_LIMIT) continue;
+        const node = cy.getElementById(entry[0]);
+        if (node.empty()) continue;
+        const pos = node.renderedPosition();
+        const span = document.createElement('span');
+        span.className = className;
+        span.textContent = text(entry[1]);
+        // The "+N" pill hangs below the node's border, clear of its version line.
+        span.style.left = (atBottom ? pos.x : pos.x + node.renderedWidth() / 2) + 'px';
+        span.style.top = (atBottom ? pos.y + node.renderedOuterHeight() / 2 + 4 : pos.y - node.renderedHeight() / 2) + 'px';
+        fragment.appendChild(span);
+        painted++;
+      }
+    };
+    // Conflicts first, so the render limit never drops a red count in favour of a "+N".
+    paint(counts, 'badge', String, false);
+    paint(childCounts, 'badge more', function (n) { return '+' + n; }, true);
     el.badges.appendChild(fragment);
   }
 
   let badgeCounts = new Map();
+  let childCounts = new Map();
   let focusing = false;
 
   /**
@@ -417,6 +426,7 @@
       });
     }
     badgeCounts = computeBadges(view.visible);
+    childCounts = M.collapsedChildCounts(model, state.scopes, view.visible, state.expanded, state.hidden);
     paintBadges(badgeCounts);
     applySelection();
     syncFilterBar();
@@ -771,6 +781,13 @@
 
   const MENU_ITEMS = [
     {
+      label: 'Expand everything below',
+      run: function (id) {
+        state.expanded.add(id);
+        for (const child of M.descendants(model, id, state.scopes)) state.expanded.add(child);
+      }
+    },
+    {
       label: 'Show only what this depends on',
       run: function (id) {
         state.focus = { kind: 'descendants', nodeId: id };
@@ -1116,6 +1133,23 @@
     el.conflictBadge.className = 'chip';
     el.managedToggle.className = 'chip';
     el.driftToggle.className = 'chip';
+    el.expandAll.className = 'chip';
+    el.collapseAll.className = 'chip';
+    el.expandAll.textContent = '\u229E Expand all';
+    el.collapseAll.textContent = '\u229F Collapse all';
+    el.expandAll.title = 'Open every node in the enabled scopes';
+    el.collapseAll.title = 'Back to the modules and their direct dependencies';
+    el.expandAll.addEventListener('click', function () {
+      state.revealedPath = null;
+      for (const id of model.nodesById.keys()) state.expanded.add(id);
+      render();
+    });
+    el.collapseAll.addEventListener('click', function () {
+      state.revealedPath = null;
+      state.expanded.clear();
+      initialExpansion();
+      render();
+    });
     el.themeToggle.className = 'chip';
     el.driftToggle.textContent = 'Version drift';
     el.conflictBadge.addEventListener('click', stepConflict);
@@ -1169,7 +1203,9 @@
       style: style(PALETTES[effectiveTheme()]),
       wheelSensitivity: 0.2,
       textureOnViewport: true,
-      pixelRatio: 1
+      // Draw at the display's real density, or HiDPI and scaled screens stay blurry after every
+      // redraw; 2x is enough for crisp text and keeps big expanded graphs fast.
+      pixelRatio: Math.min(globalThis.devicePixelRatio || 1, 2)
     });
     depGraph.cy = cy;
     applyTheme();

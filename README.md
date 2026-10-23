@@ -59,7 +59,9 @@ The `graph` goal runs in the `package` phase. Requirements: Java 21+ and Maven 3
 | 🔵 **Newer releases** | A cyan dot marks artifacts that have a newer release. The panel shows the latest release in the same major version and the latest overall. |
 | 🟩 **Modules** | A multi-module build gets one page for the whole reactor, starting from a module overview. A library shared by several modules appears once, with an edge from each module that uses it. |
 
-Click a node to open its panel:
+The page starts small: your modules and their direct dependencies. A grey `+N` pill under a node shows how many dependencies it still hides. Click the node to expand it, use **Expand all** to show the whole graph, or **Collapse all** to go back to the start.
+
+Clicking a node also opens its panel:
 
 - **Why this version:** nearest wins or managed, or both.
 - **Requested versions:** every requested version with the path that requested it; dropped versions are struck through.
@@ -69,6 +71,7 @@ Click a node to open its panel:
 Also on the page:
 
 - **Context menu** (right-click or Shift+F10):
+  - expand everything below a node
   - show only what a node depends on
   - highlight all paths from root
   - hide a subtree

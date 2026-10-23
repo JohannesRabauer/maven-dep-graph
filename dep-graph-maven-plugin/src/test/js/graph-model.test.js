@@ -54,6 +54,28 @@ test('managedNotCountedAsConflict', () => {
   assert.strictEqual(M.managedCount(m, new Set(['test'])), 0);
 });
 
+test('collapsedChildCountsCountsDistinctEnabledChildrenOfClosedNodes', () => {
+  const a = node('g:a', '1'), b = node('g:b', '1'), c = node('g:c', '1'), t = node('g:t', '1');
+  const m = model(['m1', 'm2'], [a, b, c, t], [
+    edge('m1', a.id, 'm1'), edge('m2', a.id, 'm2'),
+    edge(a.id, b.id, 'm1'), edge(a.id, b.id, 'm2'), edge(a.id, c.id, 'm1'),
+    edge(a.id, t.id, 'm1', { scope: 'test' })]);
+  let expanded = new Set(['m1', 'm2']);
+  let v = M.visibleNodeIds(m, compile, expanded, new Set());
+  let counts = M.collapsedChildCounts(m, compile, v, expanded, new Set());
+  assert.strictEqual(counts.get(a.id), 2, 'b counted once across modules, test scope excluded');
+  assert.strictEqual(counts.get('m1'), undefined, 'an open module gets no count');
+  assert.strictEqual(M.collapsedChildCounts(m, all, v, expanded, new Set()).get(a.id), 3);
+  assert.strictEqual(counts.has(b.id), false, 'invisible nodes get no count');
+  expanded = new Set(['m1', 'm2', a.id]);
+  v = M.visibleNodeIds(m, compile, expanded, new Set());
+  counts = M.collapsedChildCounts(m, compile, v, expanded, new Set());
+  assert.strictEqual(counts.has(a.id), false, 'an open node gets no count');
+  assert.strictEqual(counts.has(b.id), false, 'a leaf gets no count');
+  counts = M.collapsedChildCounts(m, compile, v, expanded, new Set([a.id]));
+  assert.strictEqual(counts.get(a.id), 2, 'a hidden subtree counts as closed');
+});
+
 test('collapsedConflictCountsCountsHiddenConflicts', () => {
   const a = node('g:a', '1'), b = node('g:b', '1'), c = node('g:c', '1'), d = node('g:d', '2');
   const m = model(['m1'], [a, b, c, d], [

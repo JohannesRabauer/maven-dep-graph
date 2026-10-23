@@ -63,7 +63,7 @@ body {
   height: 100vh;
   display: grid;
   grid-template-columns: 1fr auto;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto auto minmax(0, 1fr);
   background: var(--bg);
   color: var(--text);
   font: 12px var(--sans);
@@ -144,7 +144,7 @@ body {
 
 .sep { width: 1px; height: 18px; background: var(--border); }
 
-#cy, #badges { grid-row: 3; grid-column: 1; }
+#cy, #badges, #hint { grid-row: 3; grid-column: 1; }
 #cy { background: var(--bg); min-width: 0; }
 #cy:focus-visible { outline: 2px solid var(--module); outline-offset: -2px; }
 
@@ -180,6 +180,35 @@ body {
   justify-content: center;
   transform: translate(-50%, -50%);
 }
+
+/* The count of direct dependencies a closed node would reveal; neutral, because red means conflict. */
+.badge.more {
+  min-width: 0;
+  height: 15px;
+  padding: 0 5px;
+  font-size: 10px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-weight: 600;
+}
+
+#hint {
+  position: relative;
+  align-self: end;
+  justify-self: start;
+  margin: 10px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#hint .badge { position: static; transform: none; }
 
 #panel {
   grid-row: 3;

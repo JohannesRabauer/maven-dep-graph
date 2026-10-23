@@ -275,6 +275,18 @@
     return counts;
   }
 
+  /** How many distinct direct dependencies each visible, closed node would reveal when opened. */
+  function collapsedChildCounts(model, scopes, visible, expanded, hidden) {
+    const counts = new Map();
+    for (const id of visible) {
+      if (isOpen(id, expanded, hidden)) continue;
+      const children = new Set();
+      for (const e of enabledOut(model, id, scopes)) children.add(e.to);
+      if (children.size) counts.set(id, children.size);
+    }
+    return counts;
+  }
+
   /**
    * The marker slots of one node. Conflict and managed share the top-left corner because they are
    * mutually exclusive; "newer version" and "version drift" get a corner each, so a drifting node
@@ -451,7 +463,7 @@
 
   const api = {
     createModel, decodeEdges, edgeEnabled, visibleNodeIds, conflictTriples, conflictCountForModule,
-    managedCount, collapsedConflictCounts, nodeMarkers, pathsFromRoot, descendants, ancestorsOf,
+    managedCount, collapsedConflictCounts, collapsedChildCounts, nodeMarkers, pathsFromRoot, descendants, ancestorsOf,
     driftGroups, mergedEdges, search, nextConflict
   };
   root.DepGraphModel = api;
