@@ -148,5 +148,5 @@ This repository was created from scratch in the JUG Oberpfalz live coding sessio
 
 ## License
 
-[Apache License 2.0](LICENSE). The page bundles Cytoscape.js, dagre and cytoscape-dagre (all MIT);
+[Apache License 2.0](LICENSE). The page bundles Cytoscape.js and dagre (both MIT);
 see [THIRD-PARTY-NOTICES.md](dep-graph-maven-plugin/THIRD-PARTY-NOTICES.md).

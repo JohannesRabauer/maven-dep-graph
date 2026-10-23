@@ -24,8 +24,7 @@ public final class HtmlPageWriter {
         String template = resource("template.html");
         String vendor = String.join(";\n",
                 resource("vendor/cytoscape.min.js"),
-                resource("vendor/dagre.min.js"),
-                resource("vendor/cytoscape-dagre.js"));
+                resource("vendor/dagre.min.js"));
         String[] values = {
                 escapeHtml(m.title()),
                 resource("app.css"),

@@ -11,6 +11,8 @@
   const MAX_FIT_ZOOM = 1.5;
   const INITIAL_FOCUS_MODULES = 5;
   const BADGE_RENDER_LIMIT = 300;
+  // Measured on dagre 0.8.5: network-simplex is ~1.5x tight-tree at 300 nodes, ~12x at 2000.
+  const SIMPLEX_RANKER_LIMIT = 200;
   const SCOPE_NAMES = ['compile', 'runtime', 'provided', 'test', 'system'];
   const THEMES = ['auto', 'dark', 'light'];
 
@@ -359,39 +361,62 @@
     return changed;
   }
 
-  let layoutPending = false;
-  let layoutQueue = [];
-
-  /** Runs `fn` once the current layout has applied its positions, or straight away if none runs. */
-  function afterLayout(fn) {
-    if (layoutPending) layoutQueue.push(fn);
-    else fn();
-  }
-
   /**
-   * The layout applies its positions asynchronously, and its own fit lands after a reveal has
-   * centred the node, so the fit is switched off and viewport work is queued behind `layoutstop`.
+   * Lays the graph out with dagre directly rather than through cytoscape-dagre, because that
+   * adapter drops dagre's edge waypoints and draws an edge that skips ranks as a straight chord
+   * across the whole canvas. Here each edge follows its routed lane as rounded segments.
    */
   function runLayout() {
-    const layout = cy.layout({
-      name: 'dagre',
-      rankDir: 'TB',
-      animate: false,
-      fit: false,
-      // The default network-simplex ranker costs minutes on a few thousand nodes.
-      ranker: 'tight-tree',
-      nodeDimensionsIncludeLabels: true,
-      rankSep: 60,
-      nodeSep: 20
+    const g = new dagre.graphlib.Graph({ multigraph: true });
+    g.setGraph({
+      rankdir: 'TB',
+      ranksep: 60,
+      nodesep: 20,
+      // network-simplex gives the shortest edges but costs minutes on a few thousand nodes.
+      ranker: cy.nodes().length <= SIMPLEX_RANKER_LIMIT ? 'network-simplex' : 'tight-tree'
     });
-    layoutPending = true;
-    layout.one('layoutstop', function () {
-      layoutPending = false;
-      const queued = layoutQueue;
-      layoutQueue = [];
-      for (const fn of queued) fn();
+    cy.nodes().forEach(function (n) {
+      const box = n.boundingBox({ includeLabels: true });
+      g.setNode(n.id(), { width: box.w, height: box.h });
     });
-    layout.run();
+    cy.edges().forEach(function (e) { g.setEdge(e.source().id(), e.target().id(), {}, e.id()); });
+    dagre.layout(g);
+
+    cy.batch(function () {
+      cy.nodes().positions(function (n) {
+        const p = g.node(n.id());
+        return { x: p.x, y: p.y };
+      });
+      cy.edges().forEach(function (e) {
+        const from = e.source().id();
+        const to = e.target().id();
+        const s = g.node(from);
+        const t = g.node(to);
+        // dagre's first and last points sit on the node borders; cytoscape clips the ends itself.
+        const points = g.edge({ v: from, w: to, name: e.id() }).points
+          .filter(function (p) { return !inside(p, s) && !inside(p, t); });
+        const dx = t.x - s.x;
+        const dy = t.y - s.y;
+        const len2 = dx * dx + dy * dy;
+        if (points.length === 0 || len2 === 0) {
+          e.removeStyle('curve-style edge-distances segment-weights segment-distances');
+          return;
+        }
+        // Cytoscape wants each bend relative to the source-target line: a fraction along it and
+        // a perpendicular offset from it.
+        const len = Math.sqrt(len2);
+        e.style({
+          'curve-style': 'round-segments',
+          'edge-distances': 'node-position',
+          'segment-weights': points.map(function (p) { return ((p.x - s.x) * dx + (p.y - s.y) * dy) / len2; }),
+          'segment-distances': points.map(function (p) { return ((p.y - s.y) * dx - (p.x - s.x) * dy) / len; })
+        });
+      });
+    });
+  }
+
+  function inside(p, node) {
+    return Math.abs(p.x - node.x) <= node.width / 2 + 1 && Math.abs(p.y - node.y) <= node.height / 2 + 1;
   }
 
   function paintBadges(counts) {
@@ -426,6 +451,8 @@
   let badgeCounts = new Map();
   let childCounts = new Map();
   let focusing = false;
+  // The node a tap just opened or closed; it stays where the reader clicked instead of the view refitting.
+  let anchor = null;
 
   /**
    * Draws the current state. Returns false when the size guard deferred the draw, so callers can
@@ -434,7 +461,8 @@
    */
   function render(force, after) {
     const view = computeView();
-    if (!force && view.visible.size > MAX_VISIBLE) {
+    // Only a draw that grows past the limit asks; one already accepted, or shrinking, does not.
+    if (!force && view.visible.size > MAX_VISIBLE && view.visible.size > cy.nodes().length) {
       confirmLarge(view.visible.size, function (ok) {
         if (!ok) {
           restore(lastGood);
@@ -444,21 +472,23 @@
       });
       return false;
     }
+    const anchorNode = anchor ? cy.getElementById(anchor) : cy.collection();
+    const anchorAt = anchorNode.nonempty() ? anchorNode.renderedPosition() : null;
     const structureChanged = diff(view);
     if (structureChanged) {
       // A reveal centres the node itself, so the fit is skipped there.
       const fit = !focusing;
       runLayout();
-      afterLayout(function () {
-        if (fit) {
-          cy.fit();
-          if (cy.zoom() > MAX_FIT_ZOOM) {
-            cy.zoom(MAX_FIT_ZOOM);
-            cy.center();
-          }
+      if (anchorAt && anchorNode.inside()) {
+        const now = anchorNode.renderedPosition();
+        cy.panBy({ x: anchorAt.x - now.x, y: anchorAt.y - now.y });
+      } else if (fit) {
+        cy.fit();
+        if (cy.zoom() > MAX_FIT_ZOOM) {
+          cy.zoom(MAX_FIT_ZOOM);
+          cy.center();
         }
-        paintBadges(badgeCounts);
-      });
+      }
     }
     badgeCounts = computeBadges(view.visible);
     childCounts = M.collapsedChildCounts(model, state.scopes, view.visible, state.expanded, state.hidden);
@@ -617,7 +647,10 @@
       select(id);
       focusNode(id);
     };
-    if (render(false, done)) done();
+    anchor = id;
+    const drawn = render(false, done);
+    anchor = null;
+    if (drawn) done();
   }
 
   function select(nodeId) {
@@ -632,20 +665,18 @@
    * opening it shrinks the container and would otherwise leave the node behind the panel.
    */
   function centre(nodeId) {
-    afterLayout(function () {
-      const node = cy.getElementById(nodeId);
-      if (node.empty()) return;
-      cy.resize();
-      const zoom = Math.max(cy.zoom(), MIN_INITIAL_ZOOM);
-      const pos = node.position();
-      const pan = { x: cy.width() / 2 - pos.x * zoom, y: cy.height() / 2 - pos.y * zoom };
-      // The jump is instant rather than animated, which also keeps it free of motion for readers
-      // who ask for reduced motion. The zoom is set before the pan so the pan can target the
-      // final coordinates exactly.
-      cy.zoom(zoom);
-      cy.pan(pan);
-      paintBadges(badgeCounts);
-    });
+    const node = cy.getElementById(nodeId);
+    if (node.empty()) return;
+    cy.resize();
+    const zoom = Math.max(cy.zoom(), MIN_INITIAL_ZOOM);
+    const pos = node.position();
+    const pan = { x: cy.width() / 2 - pos.x * zoom, y: cy.height() / 2 - pos.y * zoom };
+    // The jump is instant rather than animated, which also keeps it free of motion for readers
+    // who ask for reduced motion. The zoom is set before the pan so the pan can target the
+    // final coordinates exactly.
+    cy.zoom(zoom);
+    cy.pan(pan);
+    paintBadges(badgeCounts);
   }
 
   function reveal(nodeId) {
@@ -1059,13 +1090,11 @@
    * keeps a legible zoom and centres on the first few modules instead.
    */
   function clampInitialView() {
-    afterLayout(function () {
-      if (cy.zoom() >= MIN_INITIAL_ZOOM) return;
-      const modules = cy.nodes('[kind = "module"]');
-      cy.zoom(MIN_INITIAL_ZOOM);
-      cy.center(modules.length ? modules.slice(0, INITIAL_FOCUS_MODULES) : cy.nodes());
-      paintBadges(badgeCounts);
-    });
+    if (cy.zoom() >= MIN_INITIAL_ZOOM) return;
+    const modules = cy.nodes('[kind = "module"]');
+    cy.zoom(MIN_INITIAL_ZOOM);
+    cy.center(modules.length ? modules.slice(0, INITIAL_FOCUS_MODULES) : cy.nodes());
+    paintBadges(badgeCounts);
   }
 
   function style(palette) {
@@ -1308,7 +1337,6 @@
     cy = cytoscape({
       container: el.cy,
       elements: [],
-      layout: { name: 'dagre', rankDir: 'TB', animate: false },
       style: style(PALETTES[effectiveTheme()]),
       wheelSensitivity: 0.2,
       textureOnViewport: true,
