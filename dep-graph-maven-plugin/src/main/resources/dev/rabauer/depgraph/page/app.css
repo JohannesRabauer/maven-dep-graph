@@ -107,6 +107,9 @@ body {
 #scopes { display: flex; gap: 6px; }
 
 .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 2px 8px;
   border-radius: 999px;
   background: var(--chip);
@@ -215,6 +218,10 @@ body {
 }
 
 #hint .badge { position: static; transform: none; }
+
+@media (max-width: 560px) {
+  #hint { display: none; }
+}
 
 #legend {
   position: relative;

@@ -25,7 +25,7 @@ works offline.
 **Try it once**, without touching your POM:
 
 ```bash
-mvn dev.rabauer:dep-graph-maven-plugin:0.1.0:graph
+mvn dev.rabauer:dep-graph-maven-plugin:0.2.0:graph
 ```
 
 Then open `target/dep-graph.html`. In a multi-module build, put `package -DskipTests` before the
@@ -37,7 +37,7 @@ goal so the modules can resolve each other.
 <plugin>
     <groupId>dev.rabauer</groupId>
     <artifactId>dep-graph-maven-plugin</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
     <executions>
         <execution>
             <goals>

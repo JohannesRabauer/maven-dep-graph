@@ -96,6 +96,38 @@
     return svg;
   }
 
+  // Toolbar icons as SVG rather than font glyphs, so they look the same on every system font.
+  const TOOL_ICONS = {
+    conflict: [{ d: 'M7 1.5 13 12.5H1Z', fill: true }],
+    managed: [{ d: 'M7 1.5 12.5 7 7 12.5 1.5 7Z', fill: true }],
+    expand: [{ d: 'M2.5 2.5h9v9h-9zM7 4.8v4.4M4.8 7h4.4' }],
+    collapse: [{ d: 'M2.5 2.5h9v9h-9zM4.8 7h4.4' }],
+    drift: [{ d: 'M2 4.5h7.5M7 2l2.5 2.5L7 7M12 9.5H4.5M7 7 4.5 9.5 7 12' }],
+    theme: [{ d: 'M7 1.8a5.2 5.2 0 1 0 0 10.4 5.2 5.2 0 1 0 0-10.4z' }, { d: 'M7 1.8a5.2 5.2 0 0 0 0 10.4z', fill: true }]
+  };
+
+  function setToolLabel(button, iconName, text) {
+    button.textContent = '';
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 14 14');
+    svg.setAttribute('width', '12');
+    svg.setAttribute('height', '12');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    for (const part of TOOL_ICONS[iconName]) {
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', part.d);
+      path.setAttribute('stroke', 'currentColor');
+      path.setAttribute('stroke-width', '1.4');
+      path.setAttribute('stroke-linejoin', 'round');
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('fill', part.fill ? 'currentColor' : 'none');
+      svg.appendChild(path);
+    }
+    button.appendChild(svg);
+    button.appendChild(elt('span', null, text));
+  }
+
   function iconButton(label, className) {
     const button = elt('button', className || 'icon-button');
     button.type = 'button';
@@ -377,9 +409,10 @@
         const span = document.createElement('span');
         span.className = className;
         span.textContent = text(entry[1]);
-        // The "+N" pill hangs below the node's border, clear of its version line.
-        span.style.left = (atBottom ? pos.x : pos.x + node.renderedWidth() / 2) + 'px';
-        span.style.top = (atBottom ? pos.y + node.renderedOuterHeight() / 2 + 4 : pos.y - node.renderedHeight() / 2) + 'px';
+        // The "+N" pill hangs below the node's border, clear of its version line; the red count
+        // takes the bottom-left corner, which no node marker uses.
+        span.style.left = (atBottom ? pos.x : pos.x - node.renderedWidth() / 2) + 'px';
+        span.style.top = (atBottom ? pos.y + node.renderedOuterHeight() / 2 + 4 : pos.y + node.renderedHeight() / 2) + 'px';
         fragment.appendChild(span);
         painted++;
       }
@@ -1103,7 +1136,8 @@
 
   function applyTheme() {
     document.documentElement.setAttribute('data-theme', state.theme);
-    el.themeToggle.textContent = '\u25D0 Theme: ' + state.theme;
+    el.themeToggle.title = 'Switch between auto, dark and light';
+    setToolLabel(el.themeToggle, 'theme', 'Theme: ' + state.theme);
     if (cy) cy.style(style(PALETTES[effectiveTheme()]));
   }
 
@@ -1112,10 +1146,12 @@
       button.setAttribute('aria-pressed', String(state.scopes.has(button.dataset.scope)));
     }
     const info = scopeInfo();
-    el.conflictBadge.textContent = '\u25B2 ' + info.triples.length
-      + (info.triples.length === 1 ? ' conflict' : ' conflicts');
+    setToolLabel(el.conflictBadge, 'conflict', info.triples.length
+      + (info.triples.length === 1 ? ' conflict' : ' conflicts'));
+    el.conflictBadge.title = info.triples.length ? 'Step through each version conflict' : 'No version conflicts';
     el.conflictBadge.classList.toggle('has-conflicts', info.triples.length > 0);
-    el.managedToggle.textContent = '\u25C6 ' + info.managed + ' managed';
+    setToolLabel(el.managedToggle, 'managed', info.managed + ' managed');
+    el.managedToggle.title = 'Show or hide versions pinned by dependencyManagement';
     el.managedToggle.setAttribute('aria-pressed', String(state.showManaged));
     el.driftToggle.setAttribute('aria-pressed', String(state.showDrift));
   }
@@ -1175,8 +1211,8 @@
     el.driftToggle.className = 'chip';
     el.expandAll.className = 'chip';
     el.collapseAll.className = 'chip';
-    el.expandAll.textContent = '\u229E Expand all';
-    el.collapseAll.textContent = '\u229F Collapse all';
+    setToolLabel(el.expandAll, 'expand', 'Expand all');
+    setToolLabel(el.collapseAll, 'collapse', 'Collapse all');
     el.expandAll.title = 'Open every node in the enabled scopes';
     el.collapseAll.title = 'Back to the modules and their direct dependencies';
     el.expandAll.addEventListener('click', function () {
@@ -1191,7 +1227,8 @@
       render();
     });
     el.themeToggle.className = 'chip';
-    el.driftToggle.textContent = 'Version drift';
+    setToolLabel(el.driftToggle, 'drift', 'Version drift');
+    el.driftToggle.title = 'Mark libraries that resolve to different versions in different modules';
     el.conflictBadge.addEventListener('click', stepConflict);
 
     el.managedToggle.addEventListener('click', function () {
@@ -1238,6 +1275,8 @@
   function buildLegend() {
     const list = el.legendItems;
     if (!list) return;
+    // On a small canvas an open legend would cover most of the graph.
+    if (globalThis.innerWidth < 700 || globalThis.innerHeight < 560) list.parentElement.open = false;
     function item(key, label) {
       const li = elt('li');
       li.appendChild(key);

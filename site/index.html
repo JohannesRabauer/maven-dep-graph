@@ -54,7 +54,7 @@
         <a href="demo/" class="shot-link"><picture>
           <source srcset="assets/hero-light.png" media="(prefers-color-scheme: light)">
           <img src="assets/hero-dark.png" width="1440" height="640"
-               alt="The generated page: a Spring Boot app's dependency graph. commons-io 2.19.0 is outlined in red because commons-compress wanted 2.16.1; the side panel explains 'Nearest wins', lists both requested versions and both paths from the root, and shows the latest release 2.22.0. slf4j-api is outlined in violet because Spring Boot manages its version.">
+               alt="The generated page: a Spring Boot app's dependency graph. commons-io 2.19.0 is outlined in red because commons-compress wanted 2.16.1; the side panel explains 'Nearest wins', says 'Update available: 2.19.0 → 2.22.0', and lists both requested versions and both paths from the root. slf4j-api is outlined in violet because Spring Boot manages its version, cyan arrows mark artifacts with newer releases, and a legend explains every marker.">
         </picture></a>
         <figcaption>The generated page for the demo app. <a href="demo/">Try it yourself</a>: click the red <strong>1 conflict</strong> badge.</figcaption>
       </figure>
@@ -88,7 +88,7 @@
           <p>A BOM or parent <code>dependencyManagement</code> pin is usually deliberate, so it gets its own colour and its own toggle, and the panel names the BOM.</p>
         </article>
         <article class="card">
-          <span class="swatch cyan" aria-hidden="true"></span>
+          <span class="swatch cyan" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 2.6 10.6 6.4H8.1v4.6H5.9V6.4H3.4Z" fill="#0F172A"/></svg></span>
           <h3>Newer releases</h3>
           <p>A cyan ↑ marker flags artifacts with a newer release in the same major. The panel says <em>Update available</em>, shows the upgrade next to the version in use, and notes when a new major exists. Lookups use your configured repositories.</p>
         </article>
@@ -98,27 +98,27 @@
           <p>A multi-module build gets one page for the whole reactor, starting from a module overview. Shared libraries appear once, with an edge from every module that uses them.</p>
         </article>
         <article class="card">
-          <span class="icon" aria-hidden="true">⤴</span>
+          <span class="icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v10M18 9c0 5-6 4-11 8.5"/></svg></span>
           <h3>All paths from root</h3>
           <p>A <code>+N</code> pill shows what a node still hides; expand one node, its whole subtree, or everything at once. Right-click any node to highlight every path that pulls it in, show only what it depends on, or hide its subtree. An active filter always shows as a chip.</p>
         </article>
         <article class="card">
-          <span class="icon" aria-hidden="true">◐</span>
+          <span class="icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg></span>
           <h3>Scopes and drift</h3>
           <p>Toggle compile, runtime, provided, test and system. Turn on <em>version drift</em> to spot a library that resolves differently in different modules.</p>
         </article>
         <article class="card">
-          <span class="icon" aria-hidden="true">⌨</span>
+          <span class="icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6.5 10h.01M10 10h.01M14 10h.01M17.5 10h.01M7.5 14h9"/></svg></span>
           <h3>Search and keyboard</h3>
           <p>Jump to any <code>group:artifact</code>. Arrow keys move between nodes, Enter expands, and Shift+F10 opens the menu. Dark and light themes are included.</p>
         </article>
         <article class="card">
-          <span class="icon" aria-hidden="true">⇲</span>
+          <span class="icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span>
           <h3>One offline file</h3>
           <p>JS, CSS and data are inlined, with no CDN, fonts or server. Attach it to a CI run, mail it to a colleague, or open it on a plane.</p>
         </article>
         <article class="card">
-          <span class="icon" aria-hidden="true">▦</span>
+          <span class="icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
           <h3>Built for big builds</h3>
           <p>A synthetic 300-module build with 4,760 artifacts and 124k edges becomes a 4.3 MB page that opens in under a second.</p>
         </article>
@@ -135,7 +135,7 @@
           <h3><span class="step-num">A</span> Try it once, no POM changes</h3>
           <p>Run this in any Maven project:</p>
           <div class="code" data-copy>
-            <pre><code>mvn dev.rabauer:dep-graph-maven-plugin:0.1.0:graph</code></pre>
+            <pre><code>mvn dev.rabauer:dep-graph-maven-plugin:0.2.0:graph</code></pre>
           </div>
           <p class="small">In a multi-module build, add <code>package -DskipTests</code> before the goal so modules can resolve each other. Then open <code>target/dep-graph.html</code>.</p>
         </div>
@@ -147,7 +147,7 @@
 <pre><code>&lt;plugin&gt;
   &lt;groupId&gt;dev.rabauer&lt;/groupId&gt;
   &lt;artifactId&gt;dep-graph-maven-plugin&lt;/artifactId&gt;
-  &lt;version&gt;0.1.0&lt;/version&gt;
+  &lt;version&gt;0.2.0&lt;/version&gt;
   &lt;executions&gt;
     &lt;execution&gt;
       &lt;goals&gt;
