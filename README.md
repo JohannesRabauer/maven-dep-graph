@@ -123,12 +123,12 @@ mvn -f demo-project/pom.xml package               # writes demo-project/target/d
 
 Pushing a tag such as `v0.2.0` runs the [release workflow](.github/workflows/release.yml). It sets
 the version from the tag, then builds, signs and publishes the plugin to Maven Central, and
-creates a GitHub Release. The POM on `main` stays on a `-SNAPSHOT` version. The workflow needs four
+creates a GitHub Release. The POM on `main` stays on a `-SNAPSHOT` version. The workflow needs three
 repository secrets:
 
 - `CENTRAL_USERNAME` and `CENTRAL_TOKEN`: a Central Portal user token
-- `GPG_PRIVATE_KEY`: an ASCII-armored secret key
-- `GPG_PASSPHRASE`
+- `GPG_PRIVATE_KEY`: an ASCII-armored secret key without a passphrase, whose public key is on
+  `keyserver.ubuntu.com`
 
 ## License
 

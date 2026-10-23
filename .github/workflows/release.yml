@@ -27,8 +27,8 @@ jobs:
           server-id: central
           server-username-env-var: CENTRAL_USERNAME
           server-password-env-var: CENTRAL_TOKEN
+          # The signing key has no passphrase; it only lives in this secret.
           gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
-          gpg-passphrase-env-var: MAVEN_GPG_PASSPHRASE
 
       - name: Derive version from tag
         id: version
@@ -51,7 +51,6 @@ jobs:
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Create GitHub Release
         env:
