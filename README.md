@@ -146,6 +146,11 @@ This repository was created from scratch in the JUG Oberpfalz live coding sessio
 
 ▶ [Watch the recording on YouTube](https://youtube.com/live/mufzjT87pmI)
 
+## Contributing
+
+Contributions are welcome. AI-assisted contributions must be disclosed; see
+[CONTRIBUTING.md](CONTRIBUTING.md) for the rules.
+
 ## License
 
 [Apache License 2.0](LICENSE). The page bundles Cytoscape.js and dagre (both MIT);
