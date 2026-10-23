@@ -175,7 +175,8 @@ public class DepGraphMojo extends AbstractMojo
             this.repositorySystem,
             this.session.getRepositorySession(),
             this.project.getRemoteProjectRepositories(),
-            LATEST_LOOKUP_THREADS).resolve(groupArtifacts);
+            LATEST_LOOKUP_THREADS,
+            (ga, cause) -> {}).resolve(groupArtifacts);
 
         final List<GraphModel.Node> nodes = new ArrayList<>(collected.size());
         for(final GraphModel.Node node : collected.values())

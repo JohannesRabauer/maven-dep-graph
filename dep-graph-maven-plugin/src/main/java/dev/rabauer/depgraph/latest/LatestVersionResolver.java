@@ -12,6 +12,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -22,16 +24,22 @@ public final class LatestVersionResolver {
     private final RepositorySystemSession session;
     private final List<RemoteRepository> repos;
     private final int threads;
+    private final BiConsumer<String, Throwable> onFailure;
 
     public LatestVersionResolver(RepositorySystem system, RepositorySystemSession session,
-                                 List<RemoteRepository> repos, int threads) {
+                                 List<RemoteRepository> repos, int threads,
+                                 BiConsumer<String, Throwable> onFailure) {
         this.system = system;
         this.session = session;
         this.repos = repos;
         this.threads = Math.max(1, threads);
+        this.onFailure = onFailure;
     }
 
-    /** Key "g:a" maps to stable versions ascending; a null value means "not checked". */
+    /**
+     * Key "g:a" maps to stable versions ascending; a null value means "not checked".
+     * Each failed lookup is also passed to onFailure, on the calling thread.
+     */
     public Map<String, List<String>> resolve(Set<String> groupArtifacts) {
         Map<String, List<String>> result = new HashMap<>();
         if (session.isOffline() || groupArtifacts.isEmpty()) {
@@ -54,6 +62,7 @@ public final class LatestVersionResolver {
                     Thread.currentThread().interrupt();
                     versions = null;
                 } catch (Exception ex) {
+                    onFailure.accept(e.getKey(), ex instanceof ExecutionException ? ex.getCause() : ex);
                     versions = null;
                 }
                 result.put(e.getKey(), versions);
