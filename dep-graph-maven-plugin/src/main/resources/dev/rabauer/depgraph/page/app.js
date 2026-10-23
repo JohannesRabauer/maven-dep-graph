@@ -7,6 +7,8 @@
   const PATH_LIMIT = 50;
   const SEARCH_LIMIT = 20;
   const MIN_INITIAL_ZOOM = 0.5;
+  // Keeps a small graph at a natural size instead of blowing a handful of nodes up to fill the screen.
+  const MAX_FIT_ZOOM = 1.5;
   const INITIAL_FOCUS_MODULES = 5;
   const BADGE_RENDER_LIMIT = 300;
   const SCOPE_NAMES = ['compile', 'runtime', 'provided', 'test', 'system'];
@@ -404,7 +406,13 @@
       const fit = !focusing;
       runLayout();
       afterLayout(function () {
-        if (fit) cy.fit();
+        if (fit) {
+          cy.fit();
+          if (cy.zoom() > MAX_FIT_ZOOM) {
+            cy.zoom(MAX_FIT_ZOOM);
+            cy.center();
+          }
+        }
         paintBadges(badgeCounts);
       });
     }
