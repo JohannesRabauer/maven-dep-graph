@@ -177,6 +177,13 @@ class VersionClassifierTest {
     }
 
     @Test
+    void classifyIgnoresPostgresBuildNumberBeforeJdbcLine() {
+        assertEquals("-jdbc42", VersionClassifier.variant("9.4-1206-jdbc42"));
+        assertEquals(new Latest("9.4-1206-jdbc41", "9.4-1206-jdbc41", true), VersionClassifier.classify("9.4-1200-jdbc41",
+                List.of("9.4-1200-jdbc41", "9.4-1200-jdbc42", "9.4-1206-jdbc41", "9.4-1206-jdbc42")));
+    }
+
+    @Test
     void classifyNullIsNotChecked() {
         assertNull(VersionClassifier.classify("1.0", null));
     }

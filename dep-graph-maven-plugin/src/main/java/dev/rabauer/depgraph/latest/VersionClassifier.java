@@ -19,7 +19,8 @@ public final class VersionClassifier {
     // The pre-release tag with its separator and counter, wherever it sits: "-RC1" in "33.0.0-RC1-jre".
     private static final Pattern PRE_RELEASE =
             Pattern.compile("(?i)[._-]?(?<![a-z])(" + UNSTABLE_TOKENS + ")([._+-]?\\d+)?(?![a-z])");
-    private static final Pattern NUMERIC_PREFIX = Pattern.compile("^v?\\d+(\\.\\d+)*");
+    // Dash-separated numbers belong to the version too: "-1206" in PostgreSQL's "9.4-1206-jdbc42" is a build.
+    private static final Pattern NUMERIC_PREFIX = Pattern.compile("^v?\\d+([.-]\\d+)*");
     // Counters that change with every release: "rev20240906" and "build217" are one variant, "-1.5.13" none.
     private static final Pattern COUNTER = Pattern.compile("(rev|build)\\d+");
     // The number after a platform word names the line: "-jdk-11" and "-jdk-8" are different variants.
