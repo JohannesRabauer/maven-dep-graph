@@ -4,6 +4,10 @@
   const M = globalThis.DepGraphModel;
   const MAX_VISIBLE = 2000;
   const AUTO_EXPAND_MODULES = 20;
+  const PATH_LIMIT = 50;
+  const SEARCH_LIMIT = 20;
+  const MIN_INITIAL_ZOOM = 0.5;
+  const INITIAL_FOCUS_MODULES = 5;
   const BADGE_SOURCE_LIMIT = 200;
   const BADGE_RENDER_LIMIT = 300;
   const SCOPE_NAMES = ['compile', 'runtime', 'provided', 'test', 'system'];
@@ -56,8 +60,45 @@
     filterBar: document.getElementById('filter-bar'),
     cy: document.getElementById('cy'),
     badges: document.getElementById('badges'),
+    panel: document.getElementById('panel'),
+    menu: document.getElementById('context-menu'),
     warning: document.getElementById('warning-dialog')
   };
+
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const CROSS_PATH = 'M3.5 3.5 10.5 10.5M10.5 3.5 3.5 10.5';
+
+  function elt(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function iconEl(d) {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 14 14');
+    svg.setAttribute('width', '12');
+    svg.setAttribute('height', '12');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '1.6');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('fill', 'none');
+    svg.appendChild(path);
+    return svg;
+  }
+
+  function iconButton(label, className) {
+    const button = elt('button', className || 'icon-button');
+    button.type = 'button';
+    button.setAttribute('aria-label', label);
+    button.appendChild(iconEl(CROSS_PATH));
+    return button;
+  }
 
   const data = JSON.parse(document.getElementById('dep-graph-data').textContent);
   const model = M.createModel(data);
@@ -73,8 +114,9 @@
     selected: null
   };
 
+  const drift = M.driftGroups(model);
   const driftMembers = new Set();
-  for (const entries of M.driftGroups(model).values()) {
+  for (const entries of drift.values()) {
     for (const e of entries) driftMembers.add(e.nodeId);
   }
 
@@ -82,6 +124,9 @@
   let scopeCache = null;
   let lastGood = snapshot();
   let pendingConfirm = null;
+  let warningReturnFocus = null;
+  let searchIndex = -1;
+  let conflictIndex = -1;
 
   function scopeKey() {
     return Array.from(state.scopes).sort().join(',');
@@ -112,6 +157,7 @@
     state.hidden = new Set(snap.hidden);
     state.focus = snap.focus;
     syncTopbar();
+    syncFilterBar();
   }
 
   function gaOf(id) {
@@ -387,22 +433,39 @@
     badgeCounts = computeBadges(view.visible);
     paintBadges(badgeCounts);
     applySelection();
+    syncFilterBar();
+    if (state.selected) renderPanel(state.selected);
     lastGood = snapshot();
     return true;
   }
 
+  function closeWarning() {
+    el.warning.hidden = true;
+    el.warning.textContent = '';
+    const done = pendingConfirm;
+    const previous = warningReturnFocus;
+    pendingConfirm = null;
+    warningReturnFocus = null;
+    if (previous && previous.focus) previous.focus();
+    return done;
+  }
+
+  /**
+   * The newest request wins: a confirm that arrives while the dialog is open replaces the pending
+   * one, and its `after` callback travels with it. Cancelling the newest restores `lastGood`, which
+   * also undoes the superseded state, so no stale callback is left behind.
+   */
   function confirmLarge(count, done) {
+    if (!pendingConfirm) warningReturnFocus = document.activeElement;
     pendingConfirm = done;
     el.warning.textContent = '';
-    const text = document.createElement('p');
-    text.textContent = 'This shows ' + count + ' artifacts and may be slow. Continue?';
-    const actions = document.createElement('div');
-    actions.className = 'actions';
+    const text = elt('p', null, 'This shows ' + count + ' artifacts and may be slow. Continue?');
+    text.id = 'warning-text';
+    const actions = elt('div', 'actions');
     for (const act of [['cancel', 'Cancel'], ['confirm', 'Continue']]) {
-      const button = document.createElement('button');
+      const button = elt('button', null, act[1]);
       button.type = 'button';
       button.dataset.act = act[0];
-      button.textContent = act[1];
       actions.appendChild(button);
     }
     el.warning.appendChild(text);
@@ -415,11 +478,30 @@
   el.warning.addEventListener('click', function (ev) {
     const act = ev.target.dataset ? ev.target.dataset.act : null;
     if (!act) return;
-    el.warning.hidden = true;
-    el.warning.textContent = '';
-    const done = pendingConfirm;
-    pendingConfirm = null;
+    const done = closeWarning();
     if (done) done(act === 'confirm');
+  });
+
+  // Keeps focus inside the modal dialog and lets Esc cancel it.
+  el.warning.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      const done = closeWarning();
+      if (done) done(false);
+      return;
+    }
+    if (ev.key !== 'Tab') return;
+    const buttons = el.warning.querySelectorAll('button');
+    if (!buttons.length) return;
+    const first = buttons[0];
+    const last = buttons[buttons.length - 1];
+    if (ev.shiftKey && document.activeElement === first) {
+      ev.preventDefault();
+      last.focus();
+    } else if (!ev.shiftKey && document.activeElement === last) {
+      ev.preventDefault();
+      first.focus();
+    }
   });
 
   function applySelection() {
@@ -454,6 +536,350 @@
       return true;
     };
     return render(false, done) ? done() : false;
+  }
+
+  function artifactIdOf(id) {
+    const n = model.nodesById.get(id);
+    return n ? n.artifactId : id;
+  }
+
+  function enabledIn(id) {
+    return (model.inEdges.get(id) || []).filter(function (e) { return M.edgeEnabled(e, state.scopes); });
+  }
+
+  function sectionBody(parent, title) {
+    parent.appendChild(elt('h2', 'section-title', title));
+    const body = elt('div', 'section-body');
+    parent.appendChild(body);
+    return body;
+  }
+
+  function panelHead(id, node, ins) {
+    const head = elt('div', 'panel-head');
+    const coords = elt('div', 'coords');
+    coords.appendChild(elt('div', 'mono muted', node ? node.groupId : ''));
+    coords.appendChild(elt('div', 'mono artifact', artifactIdOf(id)));
+    if (node && node.type && node.type !== 'jar') coords.appendChild(elt('div', 'mono muted', node.type));
+    if (node && node.classifier) coords.appendChild(elt('div', 'mono muted', node.classifier));
+    const meta = elt('div', 'meta');
+    if (node && node.version) meta.appendChild(elt('span', 'mono', node.version));
+    const isModule = model.moduleIds.has(id);
+    const dropped = ins.some(function (e) { return e.status === 'DROPPED'; });
+    const managed = ins.some(function (e) { return e.status === 'MANAGED'; });
+    if (isModule) meta.appendChild(elt('span', 'pill pill-module', 'module'));
+    else if (dropped) meta.appendChild(elt('span', 'pill pill-conflict', 'conflict'));
+    else if (managed) meta.appendChild(elt('span', 'pill pill-managed', 'managed'));
+    else meta.appendChild(elt('span', 'pill', 'kept'));
+    const scopes = Array.from(new Set(ins.map(function (e) { return e.scope || 'compile'; }))).sort();
+    if (scopes.length) meta.appendChild(elt('span', 'muted', scopes.join(', ')));
+    if (ins.some(function (e) { return e.optional; })) meta.appendChild(elt('span', 'muted', 'optional'));
+    coords.appendChild(meta);
+    head.appendChild(coords);
+    const close = iconButton('Close panel');
+    close.addEventListener('click', function () {
+      state.selected = null;
+      applySelection();
+      renderPanel(null);
+      el.cy.focus();
+    });
+    head.appendChild(close);
+    return head;
+  }
+
+  function whySection(panel, ins) {
+    const body = sectionBody(panel, 'Why this version');
+    const managedBy = [];
+    for (const e of ins) {
+      if (e.status !== 'MANAGED') continue;
+      const by = e.managedBy || 'dependencyManagement';
+      if (!managedBy.includes(by)) managedBy.push(by);
+    }
+    for (const by of managedBy) body.appendChild(elt('div', 'why why-managed', 'Managed by ' + by));
+    if (ins.some(function (e) { return e.status === 'DROPPED'; })) {
+      body.appendChild(elt('div', 'why why-conflict', 'Nearest wins'));
+    }
+    if (!body.children.length) body.appendChild(elt('div', 'muted', 'Only version requested'));
+  }
+
+  function requestedSection(panel, node, ins) {
+    const body = sectionBody(panel, 'Requested versions');
+    const rows = new Map();
+    for (const e of ins) {
+      const version = e.requestedVersion != null ? e.requestedVersion : (node ? node.version : '');
+      const parent = artifactIdOf(e.from);
+      const key = version + '\u0000' + parent;
+      let row = rows.get(key);
+      if (!row) rows.set(key, row = { version: version, parent: parent, status: e.status, modules: new Set() });
+      if (e.status === 'DROPPED' || (e.status === 'MANAGED' && row.status !== 'DROPPED')) row.status = e.status;
+      row.modules.add(e.module);
+    }
+    if (!rows.size) {
+      body.appendChild(elt('div', 'muted', 'No requesting dependency'));
+      return;
+    }
+    for (const row of rows.values()) {
+      const line = elt('div', 'req');
+      const version = elt('span', 'mono req-version req-' + String(row.status).toLowerCase(), row.version);
+      line.appendChild(version);
+      line.appendChild(elt('span', 'muted', 'via ' + row.parent));
+      body.appendChild(line);
+      if (row.modules.size > 1) {
+        const names = Array.from(row.modules).map(artifactIdOf).sort();
+        body.appendChild(elt('div', 'muted modules', names.join(', ')));
+      }
+    }
+  }
+
+  function pathsSection(panel, id) {
+    const paths = M.pathsFromRoot(model, id, state.scopes, PATH_LIMIT);
+    const body = sectionBody(panel, 'Paths from root (' + paths.length + ')');
+    for (const path of paths) {
+      body.appendChild(elt('div', 'mono path', path.map(artifactIdOf).join(' \u2192 ')));
+    }
+    if (!paths.length) body.appendChild(elt('div', 'muted', 'No path in the enabled scopes'));
+    else if (paths.length >= PATH_LIMIT) body.appendChild(elt('div', 'muted', '+ more'));
+  }
+
+  function latestSection(panel, node) {
+    const body = sectionBody(panel, 'Latest version');
+    const latest = node ? node.latest : null;
+    if (!latest) {
+      body.appendChild(elt('div', 'muted', 'not checked'));
+      return;
+    }
+    const major = String(node.version || '').split('.')[0];
+    body.appendChild(elt('div', 'mono', 'latest ' + major + '.x: ' + (latest.latestSameMajor || 'none')));
+    body.appendChild(elt('div', 'mono', 'latest overall: ' + (latest.latestOverall || 'none')));
+  }
+
+  function driftSection(panel, node) {
+    if (!state.showDrift || !node) return;
+    const entries = drift.get(node.groupId + ':' + node.artifactId);
+    if (!entries) return;
+    const body = sectionBody(panel, 'Version drift');
+    for (const entry of entries) {
+      for (const moduleId of entry.modules) {
+        body.appendChild(elt('div', 'mono drift-row', artifactIdOf(moduleId) + ' \u2192 ' + entry.version));
+      }
+    }
+  }
+
+  function renderPanel(id) {
+    el.panel.textContent = '';
+    if (!id) {
+      el.panel.hidden = true;
+      return;
+    }
+    const node = model.nodesById.get(id);
+    const ins = enabledIn(id);
+    el.panel.appendChild(panelHead(id, node, ins));
+    whySection(el.panel, ins);
+    requestedSection(el.panel, node, ins);
+    pathsSection(el.panel, id);
+    latestSection(el.panel, node);
+    driftSection(el.panel, node);
+    el.panel.hidden = false;
+  }
+
+  const MENU_ITEMS = [
+    {
+      label: 'Show only what this depends on',
+      run: function (id) {
+        state.focus = { kind: 'descendants', nodeId: id };
+        state.expanded.add(id);
+        for (const child of M.descendants(model, id, state.scopes)) state.expanded.add(child);
+      }
+    },
+    {
+      label: 'Show all paths from root',
+      run: function (id) {
+        state.focus = { kind: 'paths', nodeId: id };
+        for (const path of M.pathsFromRoot(model, id, state.scopes)) {
+          for (let i = 0; i < path.length - 1; i++) state.expanded.add(path[i]);
+        }
+      }
+    },
+    {
+      label: 'Hide this subtree',
+      run: function (id) { state.hidden.add(id); }
+    },
+    {
+      label: 'Reset view',
+      run: function () {
+        state.focus = null;
+        state.hidden.clear();
+        state.expanded.clear();
+      }
+    }
+  ];
+
+  function closeMenu(returnFocus) {
+    if (el.menu.hidden) return;
+    el.menu.hidden = true;
+    el.menu.textContent = '';
+    if (returnFocus) el.cy.focus();
+  }
+
+  function menuItems() {
+    return Array.prototype.slice.call(el.menu.querySelectorAll('[role="menuitem"]'));
+  }
+
+  function openMenu(nodeId, x, y) {
+    el.menu.textContent = '';
+    for (const item of MENU_ITEMS) {
+      const button = elt('button', 'menu-item', item.label);
+      button.type = 'button';
+      button.setAttribute('role', 'menuitem');
+      button.tabIndex = -1;
+      button.addEventListener('click', function () {
+        closeMenu(true);
+        item.run(nodeId);
+        render();
+      });
+      el.menu.appendChild(button);
+    }
+    el.menu.hidden = false;
+    const width = el.menu.offsetWidth || 220;
+    const height = el.menu.offsetHeight || 120;
+    el.menu.style.left = Math.max(0, Math.min(x, window.innerWidth - width - 4)) + 'px';
+    el.menu.style.top = Math.max(0, Math.min(y, window.innerHeight - height - 4)) + 'px';
+    const first = menuItems()[0];
+    if (first) first.focus();
+  }
+
+  function openMenuForSelection() {
+    if (!state.selected) return;
+    const node = cy.getElementById(state.selected);
+    if (node.empty()) return;
+    const box = el.cy.getBoundingClientRect();
+    const pos = node.renderedPosition();
+    openMenu(state.selected, box.left + pos.x, box.top + pos.y);
+  }
+
+  el.menu.addEventListener('keydown', function (ev) {
+    const items = menuItems();
+    const index = items.indexOf(document.activeElement);
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      closeMenu(true);
+    } else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      const step = ev.key === 'ArrowDown' ? 1 : items.length - 1;
+      items[(Math.max(index, 0) + step) % items.length].focus();
+    }
+  });
+
+  function filterChips() {
+    const chips = [];
+    if (state.focus && state.focus.kind === 'descendants') {
+      chips.push({
+        text: 'Filtered: depended on by ' + artifactIdOf(state.focus.nodeId),
+        label: 'Remove filter',
+        clear: function () { state.focus = null; }
+      });
+    } else if (state.focus && state.focus.kind === 'paths') {
+      chips.push({
+        text: 'Filtered: paths to ' + artifactIdOf(state.focus.nodeId),
+        label: 'Remove filter',
+        clear: function () { state.focus = null; }
+      });
+    }
+    for (const id of state.hidden) {
+      chips.push({
+        text: 'Hidden: ' + artifactIdOf(id) + ' subtree',
+        label: 'Show subtree again',
+        clear: function () { state.hidden.delete(id); }
+      });
+    }
+    return chips;
+  }
+
+  function syncFilterBar() {
+    el.filterBar.textContent = '';
+    for (const chip of filterChips()) {
+      const box = elt('span', 'chip filter-chip');
+      box.appendChild(elt('span', null, chip.text));
+      const remove = iconButton(chip.label, 'icon-button chip-remove');
+      remove.addEventListener('click', function () {
+        chip.clear();
+        render();
+      });
+      box.appendChild(remove);
+      el.filterBar.appendChild(box);
+    }
+  }
+
+  function closeSearch() {
+    el.searchResults.hidden = true;
+    el.searchResults.textContent = '';
+    el.search.setAttribute('aria-expanded', 'false');
+    el.search.removeAttribute('aria-activedescendant');
+    searchIndex = -1;
+  }
+
+  function highlightSearch(index) {
+    const options = el.searchResults.children;
+    if (!options.length) return;
+    searchIndex = (index + options.length) % options.length;
+    for (let i = 0; i < options.length; i++) options[i].classList.toggle('active', i === searchIndex);
+    el.search.setAttribute('aria-activedescendant', options[searchIndex].id);
+  }
+
+  function chooseSearch(index) {
+    const option = el.searchResults.children[index];
+    if (!option) return;
+    const id = option.dataset.id;
+    closeSearch();
+    reveal(id);
+  }
+
+  function updateSearch() {
+    const hits = M.search(model, el.search.value, SEARCH_LIMIT);
+    el.searchResults.textContent = '';
+    if (!hits.length) {
+      closeSearch();
+      return;
+    }
+    hits.forEach(function (id, i) {
+      const node = model.nodesById.get(id);
+      const option = elt('div', 'search-option');
+      option.id = 'search-option-' + i;
+      option.setAttribute('role', 'option');
+      option.dataset.id = id;
+      option.appendChild(elt('span', 'mono', node ? node.groupId + ':' + node.artifactId : id));
+      if (node && node.version) option.appendChild(elt('span', 'muted', node.version));
+      option.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
+      option.addEventListener('click', function () { chooseSearch(i); });
+      el.searchResults.appendChild(option);
+    });
+    const box = el.search.getBoundingClientRect();
+    el.searchResults.style.left = box.left + 'px';
+    el.searchResults.style.top = box.bottom + 2 + 'px';
+    el.searchResults.style.minWidth = box.width + 'px';
+    el.searchResults.hidden = false;
+    el.search.setAttribute('aria-expanded', 'true');
+    highlightSearch(0);
+  }
+
+  function stepConflict() {
+    const triples = scopeInfo().triples;
+    if (!triples.length) return;
+    conflictIndex = M.nextConflict(triples, conflictIndex);
+    const winner = triples[conflictIndex].winner;
+    // A winner that no enabled scope reaches cannot be centred, but the panel can still explain it.
+    if (!reveal(winner)) select(winner);
+  }
+
+  /**
+   * With hundreds of module roots a plain fit produces an unreadable strip, so the opening view
+   * keeps a legible zoom and centres on the first few modules instead.
+   */
+  function clampInitialView() {
+    if (cy.zoom() >= MIN_INITIAL_ZOOM) return;
+    const modules = cy.nodes('[kind = "module"]');
+    cy.zoom(MIN_INITIAL_ZOOM);
+    cy.center(modules.length ? modules.slice(0, INITIAL_FOCUS_MODULES) : cy.nodes());
+    paintBadges(badgeCounts);
   }
 
   function style(palette) {
@@ -531,7 +957,8 @@
       button.setAttribute('aria-pressed', String(state.scopes.has(button.dataset.scope)));
     }
     const info = scopeInfo();
-    el.conflictBadge.textContent = '\u25B2 ' + info.triples.length + ' conflicts';
+    el.conflictBadge.textContent = '\u25B2 ' + info.triples.length
+      + (info.triples.length === 1 ? ' conflict' : ' conflicts');
     el.conflictBadge.classList.toggle('has-conflicts', info.triples.length > 0);
     el.managedToggle.textContent = '\u25C6 ' + info.managed + ' managed';
     el.managedToggle.setAttribute('aria-pressed', String(state.showManaged));
@@ -545,6 +972,32 @@
     el.stats.textContent = moduleCount + (moduleCount === 1 ? ' module \u00B7 ' : ' modules \u00B7 ')
       + artifacts + (artifacts === 1 ? ' artifact' : ' artifacts');
     el.search.placeholder = 'Search group:artifact\u2026';
+    el.search.setAttribute('role', 'combobox');
+    el.search.setAttribute('aria-expanded', 'false');
+    el.search.setAttribute('aria-controls', 'search-results');
+    el.search.setAttribute('aria-autocomplete', 'list');
+
+    el.searchResults = elt('div', null);
+    el.searchResults.id = 'search-results';
+    el.searchResults.setAttribute('role', 'listbox');
+    el.searchResults.hidden = true;
+    document.body.appendChild(el.searchResults);
+
+    el.search.addEventListener('input', updateSearch);
+    el.search.addEventListener('blur', function () { closeSearch(); });
+    el.search.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') {
+        closeSearch();
+      } else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+        if (el.searchResults.hidden) updateSearch();
+        else highlightSearch(searchIndex + (ev.key === 'ArrowDown' ? 1 : -1));
+        ev.preventDefault();
+      } else if (ev.key === 'Enter') {
+        ev.preventDefault();
+        if (el.searchResults.hidden) updateSearch();
+        else chooseSearch(searchIndex < 0 ? 0 : searchIndex);
+      }
+    });
 
     for (const scope of SCOPE_NAMES) {
       const button = document.createElement('button');
@@ -566,6 +1019,7 @@
     el.driftToggle.className = 'chip';
     el.themeToggle.className = 'chip';
     el.driftToggle.textContent = 'Version drift';
+    el.conflictBadge.addEventListener('click', stepConflict);
 
     el.managedToggle.addEventListener('click', function () {
       state.showManaged = !state.showManaged;
@@ -624,15 +1078,41 @@
 
     cy.on('tap', 'node', function (ev) {
       const id = ev.target.id();
+      closeMenu(false);
       if (state.expanded.has(id)) state.expanded.delete(id);
       else state.expanded.add(id);
       const done = function () { select(id); };
       if (render(false, done)) done();
     });
+    cy.on('cxttap', 'node', function (ev) {
+      const id = ev.target.id();
+      select(id);
+      const ori = ev.originalEvent || {};
+      openMenu(id, ori.clientX || 0, ori.clientY || 0);
+    });
     cy.on('pan zoom resize', function () { paintBadges(badgeCounts); });
 
+    el.cy.tabIndex = 0;
+    el.cy.setAttribute('role', 'application');
+    el.cy.setAttribute('aria-label', 'Dependency graph');
+    el.cy.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'ContextMenu' || (ev.key === 'F10' && ev.shiftKey)) {
+        if (!el.menu.hidden || !state.selected) return;
+        ev.preventDefault();
+        openMenuForSelection();
+      } else if (ev.key === 'Escape' && !el.menu.hidden) {
+        closeMenu(true);
+      }
+    });
+    document.addEventListener('mousedown', function (ev) {
+      if (!el.menu.hidden && !el.menu.contains(ev.target)) closeMenu(false);
+    });
+
+    depGraph.onSelect = renderPanel;
     initialExpansion();
     render(true);
+    clampInitialView();
   }
 
   // The UMD build registers itself when a global cytoscape is present; this covers the other case.
