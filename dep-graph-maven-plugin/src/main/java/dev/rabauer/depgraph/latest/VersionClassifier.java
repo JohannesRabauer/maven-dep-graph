@@ -6,6 +6,7 @@ import org.eclipse.aether.version.InvalidVersionSpecificationException;
 import org.eclipse.aether.version.Version;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Pattern;
 
 public final class VersionClassifier {
@@ -13,6 +14,8 @@ public final class VersionClassifier {
     // An unstable token only counts at the start or right after a non-letter, so "1.0-sources" stays stable.
     private static final Pattern UNSTABLE =
             Pattern.compile("(?i)(^|[^a-z])(snapshot|alpha|beta|m\\d+|rc|cr|preview)");
+    private static final Pattern NUMERIC_PREFIX = Pattern.compile("^\\d+(\\.\\d+)*");
+    private static final Pattern NO_VARIANT = Pattern.compile("[.-](final|release|ga)|-\\d+");
 
     private VersionClassifier() {
     }
@@ -30,15 +33,29 @@ public final class VersionClassifier {
         return v.substring(0, i);
     }
 
+    /** Suffix family of a version; candidates of another variant are never offered as an update. */
+    public static String variant(String v) {
+        if (!isStable(v)) {
+            return "";
+        }
+        String rest = NUMERIC_PREFIX.matcher(v).replaceFirst("").toLowerCase(Locale.ROOT);
+        return NO_VARIANT.matcher(rest).matches() ? "" : rest;
+    }
+
     /** {@code stableAscending} may be null, which returns null ("not checked"). */
     public static GraphModel.Latest classify(String current, List<String> stableAscending) {
         if (stableAscending == null) {
             return null;
         }
-        String overall = stableAscending.isEmpty() ? null : stableAscending.get(stableAscending.size() - 1);
+        String currentVariant = variant(current);
         String currentMajor = major(current);
+        String overall = null;
         String sameMajor = null;
         for (String v : stableAscending) {
+            if (!variant(v).equals(currentVariant)) {
+                continue;
+            }
+            overall = v;
             if (major(v).equals(currentMajor)) {
                 sameMajor = v;
             }

@@ -42,6 +42,43 @@ class VersionClassifierTest {
     }
 
     @Test
+    void variantIsTheSuffixAfterTheNumbers() {
+        assertEquals("-jre", VersionClassifier.variant("33.0.0-jre"));
+        assertEquals("-android", VersionClassifier.variant("33.3.1-android"));
+        assertEquals("-jdk11", VersionClassifier.variant("1.5.0-jdk11"));
+        assertEquals("", VersionClassifier.variant("2.19.2"));
+        assertEquals("", VersionClassifier.variant("20040616"));
+    }
+
+    @Test
+    void variantNormalisesReleaseMarkers() {
+        assertEquals("", VersionClassifier.variant("6.4.4.Final"));
+        assertEquals("", VersionClassifier.variant("5.2.9.RELEASE"));
+        assertEquals("", VersionClassifier.variant("1.0.GA"));
+        assertEquals("", VersionClassifier.variant("1.2.3-1"));
+        assertEquals("", VersionClassifier.variant("3.0.0-RC1"));
+    }
+
+    @Test
+    void classifyStaysInVariant() {
+        List<String> guava = List.of("33.0.0-android", "33.0.0-jre", "33.0.1-android", "34.0.0-android");
+        assertEquals(new Latest("33.0.0-jre", "33.0.0-jre", false), VersionClassifier.classify("33.0.0-jre", guava));
+    }
+
+    @Test
+    void classifyCrossesReleaseMarker() {
+        assertEquals(new Latest("5.3.39", "5.3.39", true),
+                VersionClassifier.classify("5.2.9.RELEASE", List.of("5.2.9.RELEASE", "5.3.39")));
+        assertEquals(new Latest("6.6.1.Final", "7.0.0.Final", true),
+                VersionClassifier.classify("6.4.4.Final", List.of("6.4.4.Final", "6.6.1.Final", "7.0.0.Final")));
+    }
+
+    @Test
+    void classifyUnstableCurrentUsesPlainVariant() {
+        assertEquals(new Latest("3.0.2", "3.0.2", true), VersionClassifier.classify("3.0.0-RC1", VERSIONS));
+    }
+
+    @Test
     void classifyNullIsNotChecked() {
         assertNull(VersionClassifier.classify("1.0", null));
     }
