@@ -95,7 +95,8 @@ Set them on the command line (`-Ddepgraph.checkLatest=false`) or in the plugin's
 
 The latest-version lookup asks your configured repositories, mirrors and credentials for the
 available versions, so it needs network access at build time. Offline builds (`mvn -o`) skip it
-automatically. The page itself never needs a network connection.
+automatically. If some lookups fail, the build prints one warning with the count; `-X` shows each
+failure. The page itself never needs a network connection.
 
 ### Multi-module and partial builds
 
