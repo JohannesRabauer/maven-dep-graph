@@ -191,6 +191,12 @@ class VersionClassifierTest {
     }
 
     @Test
+    void classifyOffersGraduatedReleaseToIncubatingUser() {
+        assertEquals(new Latest("2.3.35", "2.3.35", true),
+                VersionClassifier.classify("2.3.27-incubating", List.of("2.3.27-incubating", "2.3.35")));
+    }
+
+    @Test
     void classifyOffersSpringSecurityRelease() {
         assertEquals("", VersionClassifier.variant("2.5.6.SEC02"));
         assertEquals(new Latest("2.5.6.SEC03", "2.5.6.SEC03", true),
