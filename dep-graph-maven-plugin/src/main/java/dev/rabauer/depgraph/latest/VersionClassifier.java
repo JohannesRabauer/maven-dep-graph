@@ -13,7 +13,7 @@ public final class VersionClassifier {
 
     // An unstable token only counts at the start or right after a non-letter, so "1.0-sources" stays stable.
     private static final Pattern UNSTABLE =
-            Pattern.compile("(?i)(^|[^a-z])(snapshot|alpha|beta|m\\d+|rc|cr|preview)");
+            Pattern.compile("(?i)(^|[^a-z])(snapshot|alpha|beta|m\\d+|rc|cr|preview|ea|dev|pre|b\\d+)");
     private static final Pattern NUMERIC_PREFIX = Pattern.compile("^\\d+(\\.\\d+)*");
     private static final Pattern NO_VARIANT = Pattern.compile("[.-](final|release|ga)|-\\d+");
 
