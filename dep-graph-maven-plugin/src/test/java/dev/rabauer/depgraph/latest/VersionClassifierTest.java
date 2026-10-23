@@ -18,7 +18,7 @@ class VersionClassifierTest {
     void isStable() {
         for (String v : List.of("2.0.0-SNAPSHOT", "1.0.0-alpha1", "3.0.0-M2", "3.0.0-RC1",
                 "5.0.0.CR1", "1.0.0-preview", "2.0-beta", "21-ea", "1.0.dev3", "2.0-b01", "1.0-pre1",
-                "1.0.Beta1")) {
+                "1.0.Beta1", "8.0-milestone-1", "1.0-nightly", "1.0-canary")) {
             assertFalse(VersionClassifier.isStable(v), v);
         }
         for (String v : List.of("2.19.2", "1.2.3.Final", "1.0-sources", "33.0.0-jre", "33.0.0-android",
@@ -78,6 +78,13 @@ class VersionClassifierTest {
     @Test
     void classifyUnstableCurrentUsesPlainVariant() {
         assertEquals(new Latest("3.0.2", "3.0.2", true), VersionClassifier.classify("3.0.0-RC1", VERSIONS));
+    }
+
+    @Test
+    void classifyKeepsVPrefixedAndDatedVersionsInOneVariant() {
+        assertEquals(new Latest("v1.3", "v1.3", true), VersionClassifier.classify("v1.2", List.of("v1.2", "v1.3")));
+        assertEquals(new Latest("1.0.1.v20220101", "1.0.1.v20220101", true),
+                VersionClassifier.classify("1.0.0.v20210101", List.of("1.0.0.v20210101", "1.0.1.v20220101")));
     }
 
     @Test
