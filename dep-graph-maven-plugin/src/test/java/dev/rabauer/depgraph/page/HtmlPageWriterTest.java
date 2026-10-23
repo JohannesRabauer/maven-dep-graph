@@ -39,13 +39,13 @@ class HtmlPageWriterTest {
 
     @Test
     void escapesScriptCloseInData() throws IOException {
-        GraphModel m = model("t", "x</script><b>");
+        GraphModel m = model("t", "x</script><b> <!--<script>");
         String html = HtmlPageWriter.render(m);
         int start = html.indexOf(DATA_OPEN) + DATA_OPEN.length();
         String block = html.substring(start, html.indexOf("</script>", start));
-        assertTrue(block.contains("x<\\/script><b>"));
-        assertFalse(block.contains("</script"));
-        assertEquals(JsonWriter.toJson(m), block.replace("<\\/", "</"));
+        assertFalse(block.contains("<"), block);
+        assertFalse(block.contains(">"), block);
+        assertEquals(JsonWriter.toJson(m), block.replace("\\u003c", "<").replace("\\u003e", ">"));
     }
 
     @Test

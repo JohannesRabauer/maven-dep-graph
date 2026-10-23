@@ -32,7 +32,7 @@ public final class HtmlPageWriter {
                 escapeScript(vendor),
                 escapeScript(resource("graph-model.js")),
                 escapeScript(resource("app.js")),
-                JsonWriter.toJson(m).replace("</", "<\\/")
+                JsonWriter.toJson(m).replace("<", "\\u003c").replace(">", "\\u003e")
         };
 
         // Single pass over the original template so inserted content is never re-scanned.
