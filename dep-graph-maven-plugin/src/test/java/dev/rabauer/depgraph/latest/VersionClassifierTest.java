@@ -18,11 +18,11 @@ class VersionClassifierTest {
     void isStable() {
         for (String v : List.of("2.0.0-SNAPSHOT", "1.0.0-alpha1", "3.0.0-M2", "3.0.0-RC1",
                 "5.0.0.CR1", "1.0.0-preview", "2.0-beta", "21-ea", "1.0.dev3", "2.0-b01", "1.0-pre1",
-                "1.0.Beta1", "8.0-milestone-1", "1.0-nightly", "1.0-canary")) {
+                "1.0.Beta1", "8.0-milestone-1", "1.0-nightly", "1.0-canary", "22-ea+11")) {
             assertFalse(VersionClassifier.isStable(v), v);
         }
         for (String v : List.of("2.19.2", "1.2.3.Final", "1.0-sources", "33.0.0-jre", "33.0.0-android",
-                "1.5.0-jdk11")) {
+                "1.5.0-jdk11", "1.0.1-premium", "1.0.1-device", "1.2-easymock", "1.0-presto")) {
             assertTrue(VersionClassifier.isStable(v), v);
         }
     }
@@ -122,6 +122,22 @@ class VersionClassifierTest {
         assertEquals(new Latest("1.18.15-jdk5", "1.18.15-jdk5", true),
                 VersionClassifier.classify("1.18.6-jdk5", byteBuddy));
         assertEquals(new Latest("1.18.15", "1.18.15", false), VersionClassifier.classify("1.18.15", byteBuddy));
+    }
+
+    @Test
+    void variantIgnoresRevisionAndBuildCounters() {
+        assertEquals(VersionClassifier.variant("v3-rev20240906-2.0.0"), VersionClassifier.variant("v3-rev20260925-2.0.0"));
+        assertEquals(VersionClassifier.variant("1.0.0-build217"), VersionClassifier.variant("1.0.0-build222"));
+        assertEquals("-jre", VersionClassifier.variant("1.2.3-jre-1"));
+        assertEquals("-jdk11", VersionClassifier.variant("1.5.0-jdk11"));
+        assertEquals("", VersionClassifier.variant("22-ea+11"));
+    }
+
+    @Test
+    void classifyCrossesRevisionCounter() {
+        assertEquals(new Latest("v3-rev20260925-2.0.0", "v3-rev20260925-2.0.0", true),
+                VersionClassifier.classify("v3-rev20240906-2.0.0", List.of("v3-rev20240906-2.0.0", "v3-rev20260925-2.0.0")));
+        assertEquals(new Latest("22.0.1", "22.0.1", true), VersionClassifier.classify("22-ea+11", List.of("22.0.1")));
     }
 
     @Test

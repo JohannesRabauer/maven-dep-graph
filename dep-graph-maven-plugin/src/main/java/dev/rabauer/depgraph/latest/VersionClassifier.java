@@ -11,15 +11,18 @@ import java.util.regex.Pattern;
 
 public final class VersionClassifier {
 
-    // An unstable token only counts at the start or right after a non-letter, so "1.0-sources" stays stable.
+    // An unstable token only counts as a whole word, so "1.0-sources" and "1.0.1-premium" stay stable.
     private static final String UNSTABLE_TOKENS =
             "snapshot|alpha|beta|m\\d+|rc|cr|preview|ea|dev|pre|b\\d+|milestone|nightly|canary";
-    private static final Pattern UNSTABLE = Pattern.compile("(?i)(^|[^a-z])(" + UNSTABLE_TOKENS + ")");
+    private static final Pattern UNSTABLE = Pattern.compile("(?i)(^|[^a-z])(" + UNSTABLE_TOKENS + ")(?![a-z])");
     // The pre-release tag with its separator and counter, wherever it sits: "-RC1" in "33.0.0-RC1-jre".
     private static final Pattern PRE_RELEASE =
-            Pattern.compile("(?i)[._-]?(?<![a-z])(" + UNSTABLE_TOKENS + ")([._-]?\\d+)?(?![a-z])");
+            Pattern.compile("(?i)[._-]?(?<![a-z])(" + UNSTABLE_TOKENS + ")([._+-]?\\d+)?(?![a-z])");
     private static final Pattern NUMERIC_PREFIX = Pattern.compile("^v?\\d+(\\.\\d+)*");
-    private static final Pattern NO_VARIANT = Pattern.compile("[.-](final|release|ga)|([.-]v?\\d+)+");
+    // Counters that change with every release: "rev20240906" and "build217" are one variant, "-1.5.13" none.
+    private static final Pattern COUNTER = Pattern.compile("(rev|build)\\d+");
+    private static final Pattern TRAILING_NUMBERS = Pattern.compile("([.+-]v?\\d+)+$");
+    private static final Pattern NO_VARIANT = Pattern.compile("[.-](final|release|ga)");
 
     private VersionClassifier() {
     }
@@ -42,6 +45,7 @@ public final class VersionClassifier {
         // A pre-release keeps its platform suffix: "33.0.0-jre-SNAPSHOT" belongs to "-jre".
         String release = PRE_RELEASE.matcher(v).replaceAll("");
         String rest = NUMERIC_PREFIX.matcher(release).replaceFirst("").toLowerCase(Locale.ROOT);
+        rest = TRAILING_NUMBERS.matcher(COUNTER.matcher(rest).replaceAll("$1")).replaceFirst("");
         return NO_VARIANT.matcher(rest).matches() ? "" : rest;
     }
 
