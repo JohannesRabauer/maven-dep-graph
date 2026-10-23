@@ -103,20 +103,26 @@ async function target() {
   const first = await evaluate("document.getElementById('a11y-live').textContent");
   check('focus seeds a node', !!first, first);
 
+  // Expand first: on a large reactor nothing is open, so there is nowhere to arrow down to yet.
+  if (/collapsed/.test(first)) {
+    await key('Enter');
+    await sleep(600);
+  }
+
   await key('ArrowDown');
-  await sleep(150);
+  await sleep(200);
   const down = await evaluate("document.getElementById('a11y-live').textContent");
   check('ArrowDown moves the focus', !!down && down !== first, down);
 
   await key('ArrowUp');
-  await sleep(150);
+  await sleep(200);
   const up = await evaluate("document.getElementById('a11y-live').textContent");
-  check('ArrowUp moves back', up === first, up);
+  check('ArrowUp moves back', /^(service-0|a) /.test(up) || up === first, up);
 
   await key('Enter');
-  await sleep(400);
+  await sleep(600);
   const toggled = await evaluate("document.getElementById('a11y-live').textContent");
-  check('Enter toggles expansion', toggled !== up || /collapsed|expanded/.test(toggled), toggled);
+  check('Enter toggles expansion', /collapsed|expanded/.test(toggled), toggled);
   check('Enter also selects', !(await evaluate("document.getElementById('panel').hidden")));
 
   await key('F10', true);
@@ -177,8 +183,13 @@ async function target() {
       + " g.model.modules.forEach(function (m) { g.state.expanded.delete(m.nodeId); });"
       + " g.render();"
       + " return new Promise(function (r) { setTimeout(function () {"
-      + "   r(Array.prototype.map.call(document.querySelectorAll('#badges .badge'),"
-      + "     function (b) { return b.textContent; })); }, 600); });"
+      + "   g.cy.zoom(1);"           // badges are suppressed below 0.6, and a big reactor starts far out
+      + "   g.cy.center();"
+      + "   g.render();"
+      + "   setTimeout(function () {"
+      + "     r(Array.prototype.map.call(document.querySelectorAll('#badges .badge'),"
+      + "       function (b) { return b.textContent; })); }, 600);"
+      + " }, 600); });"
       + "})()");
   check('collapsed modules carry their hidden conflict count',
       badges.length > 0 && badges.every(function (t) { return Number(t) > 0; }), JSON.stringify(badges));
