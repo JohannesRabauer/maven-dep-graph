@@ -42,8 +42,6 @@
   const NEWER_DOT = icon('<circle cx="7" cy="7" r="6" fill="' + NEWER + '"/>');
   const DRIFT_DOT = icon('<circle cx="7" cy="7" r="6" fill="' + DRIFT + '"/>');
 
-  const reducedMotion = globalThis.matchMedia
-    ? globalThis.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
   const lightScheme = globalThis.matchMedia
     ? globalThis.matchMedia('(prefers-color-scheme: light)') : { matches: false };
 
@@ -176,10 +174,7 @@
       for (const id of visible) if (keep.has(id)) narrowed.add(id);
       visible = narrowed;
     } else if (focus && focus.kind === 'paths') {
-      onPath = new Set();
-      for (const path of M.pathsFromRoot(model, focus.nodeId, state.scopes)) {
-        for (const id of path) onPath.add(id);
-      }
+      onPath = ancestorsOf(focus.nodeId);
     }
     return { visible: visible, onPath: onPath, edges: M.mergedEdges(model, visible, state.scopes) };
   }
@@ -199,6 +194,15 @@
     }
     cache.set(startId, reach);
     return reach;
+  }
+
+  /**
+   * Every node on any path from a module root to `nodeId`, which is exactly the node's ancestor
+   * set in the enabled scopes. Enumerating the paths themselves is bounded on purpose, because
+   * their number can grow exponentially.
+   */
+  function ancestorsOf(nodeId) {
+    return reverseReach(nodeId, new Map());
   }
 
   function collapsed(id, visible) {
@@ -374,17 +378,39 @@
     return changed;
   }
 
+  let layoutPending = false;
+  let layoutQueue = [];
+
+  /** Runs `fn` once the current layout has applied its positions, or straight away if none runs. */
+  function afterLayout(fn) {
+    if (layoutPending) layoutQueue.push(fn);
+    else fn();
+  }
+
+  /**
+   * The layout applies its positions asynchronously, and its own fit lands after a reveal has
+   * centred the node, so the fit is switched off and viewport work is queued behind `layoutstop`.
+   */
   function runLayout() {
-    cy.layout({
+    const layout = cy.layout({
       name: 'dagre',
       rankDir: 'TB',
       animate: false,
+      fit: false,
       // The default network-simplex ranker costs minutes on a few thousand nodes.
       ranker: 'tight-tree',
       nodeDimensionsIncludeLabels: true,
       rankSep: 60,
       nodeSep: 20
-    }).run();
+    });
+    layoutPending = true;
+    layout.one('layoutstop', function () {
+      layoutPending = false;
+      const queued = layoutQueue;
+      layoutQueue = [];
+      for (const fn of queued) fn();
+    });
+    layout.run();
   }
 
   function paintBadges(counts) {
@@ -410,6 +436,7 @@
   }
 
   let badgeCounts = new Map();
+  let focusing = false;
 
   /**
    * Draws the current state. Returns false when the size guard deferred the draw, so callers can
@@ -429,7 +456,15 @@
       return false;
     }
     const structureChanged = diff(view);
-    if (structureChanged) runLayout();
+    if (structureChanged) {
+      // A reveal centres the node itself, so the fit is skipped there.
+      const fit = !focusing;
+      runLayout();
+      afterLayout(function () {
+        if (fit) cy.fit();
+        paintBadges(badgeCounts);
+      });
+    }
     badgeCounts = computeBadges(view.visible);
     paintBadges(badgeCounts);
     applySelection();
@@ -515,11 +550,26 @@
     if (depGraph.onSelect) depGraph.onSelect(nodeId);
   }
 
+  /**
+   * Brings a revealed node into the part of the canvas the panel does not cover, at a zoom that is
+   * still legible. The panel is its own grid column, so the canvas has to be re-measured first:
+   * opening it shrinks the container and would otherwise leave the node behind the panel.
+   */
   function centre(nodeId) {
-    const node = cy.getElementById(nodeId);
-    if (node.empty()) return;
-    if (reducedMotion.matches) cy.center(node);
-    else cy.animate({ center: { eles: node } }, { duration: 200 });
+    afterLayout(function () {
+      const node = cy.getElementById(nodeId);
+      if (node.empty()) return;
+      cy.resize();
+      const zoom = Math.max(cy.zoom(), MIN_INITIAL_ZOOM);
+      const pos = node.position();
+      const pan = { x: cy.width() / 2 - pos.x * zoom, y: cy.height() / 2 - pos.y * zoom };
+      // The jump is instant rather than animated, which also keeps it free of motion for readers
+      // who ask for reduced motion. The zoom is set before the pan so the pan can target the
+      // final coordinates exactly.
+      cy.zoom(zoom);
+      cy.pan(pan);
+      paintBadges(badgeCounts);
+    });
   }
 
   function reveal(nodeId) {
@@ -535,7 +585,10 @@
       centre(nodeId);
       return true;
     };
-    return render(false, done) ? done() : false;
+    focusing = true;
+    const drawn = render(false, done);
+    focusing = false;
+    return drawn ? done() : false;
   }
 
   function artifactIdOf(id) {
@@ -632,12 +685,14 @@
 
   function pathsSection(panel, id) {
     const paths = M.pathsFromRoot(model, id, state.scopes, PATH_LIMIT);
-    const body = sectionBody(panel, 'Paths from root (' + paths.length + ')');
+    const truncated = paths.length >= PATH_LIMIT;
+    const count = truncated ? 'showing ' + PATH_LIMIT + ' of many' : String(paths.length);
+    const body = sectionBody(panel, 'Paths from root (' + count + ')');
     for (const path of paths) {
       body.appendChild(elt('div', 'mono path', path.map(artifactIdOf).join(' \u2192 ')));
     }
     if (!paths.length) body.appendChild(elt('div', 'muted', 'No path in the enabled scopes'));
-    else if (paths.length >= PATH_LIMIT) body.appendChild(elt('div', 'muted', '+ more'));
+    else if (truncated) body.appendChild(elt('div', 'muted', 'shortest ' + PATH_LIMIT + ' paths only'));
   }
 
   function latestSection(panel, node) {
@@ -694,8 +749,8 @@
       label: 'Show all paths from root',
       run: function (id) {
         state.focus = { kind: 'paths', nodeId: id };
-        for (const path of M.pathsFromRoot(model, id, state.scopes)) {
-          for (let i = 0; i < path.length - 1; i++) state.expanded.add(path[i]);
+        for (const ancestor of ancestorsOf(id)) {
+          if (ancestor !== id) state.expanded.add(ancestor);
         }
       }
     },
@@ -875,11 +930,13 @@
    * keeps a legible zoom and centres on the first few modules instead.
    */
   function clampInitialView() {
-    if (cy.zoom() >= MIN_INITIAL_ZOOM) return;
-    const modules = cy.nodes('[kind = "module"]');
-    cy.zoom(MIN_INITIAL_ZOOM);
-    cy.center(modules.length ? modules.slice(0, INITIAL_FOCUS_MODULES) : cy.nodes());
-    paintBadges(badgeCounts);
+    afterLayout(function () {
+      if (cy.zoom() >= MIN_INITIAL_ZOOM) return;
+      const modules = cy.nodes('[kind = "module"]');
+      cy.zoom(MIN_INITIAL_ZOOM);
+      cy.center(modules.length ? modules.slice(0, INITIAL_FOCUS_MODULES) : cy.nodes());
+      paintBadges(badgeCounts);
+    });
   }
 
   function style(palette) {

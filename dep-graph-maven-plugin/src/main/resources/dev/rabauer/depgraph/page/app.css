@@ -16,6 +16,7 @@
   --drift: #6B7FA8;
   --conflict-label: #F87171;
   --managed-label: #A78BFA;
+  --module-label: #22C55E;
   --shadow: rgba(0, 0, 0, .5);
   --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
   --sans: "IBM Plex Sans", system-ui, sans-serif;
@@ -33,6 +34,7 @@ html[data-theme="light"] {
   --managed-text: #4C1D95;
   --conflict-label: #B91C1C;
   --managed-label: #6D28D9;
+  --module-label: #15803D;
   --shadow: rgba(15, 23, 42, .25);
 }
 
@@ -49,6 +51,7 @@ html[data-theme="light"] {
     --managed-text: #4C1D95;
     --conflict-label: #B91C1C;
     --managed-label: #6D28D9;
+    --module-label: #15803D;
     --shadow: rgba(15, 23, 42, .25);
   }
 }
@@ -255,7 +258,7 @@ body {
   color: var(--muted);
 }
 
-.pill-module { border-color: var(--module); color: var(--module); }
+.pill-module { border-color: var(--module); color: var(--module-label); }
 .pill-conflict { border-color: var(--conflict); color: var(--conflict-label); }
 .pill-managed { border-color: var(--managed); color: var(--managed-label); }
 
