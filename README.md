@@ -48,8 +48,11 @@ Declare the plugin once, in the root POM of the build:
 </plugin>
 ```
 
-The goal runs in every module, but only the execution root writes the page: one
-`target/dep-graph.html` next to the root POM, covering every module of the current reactor.
+The goal runs in every module, but the page is written exactly once, covering every module of the
+current reactor. Normally the top-level project writes it, to `target/dep-graph.html` next to the
+root POM. With `-pl` or `-rf` the top-level project is not part of the reactor; the last project to
+build writes the page instead, still to `target/dep-graph.html` under the directory you started
+Maven in. An explicit `-Ddepgraph.outputFile=...` always wins.
 
 ## Options
 

@@ -30,7 +30,7 @@ import org.apache.maven.project.MavenProject;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.collection.DependencyCollectionException;
 
-/** Writes one interactive HTML page of the whole reactor, from the execution root. */
+/** Writes one interactive HTML page of the whole reactor, once per build. */
 @Mojo(name = "graph", defaultPhase = LifecyclePhase.PACKAGE, threadSafe = true)
 public class DepGraphMojo extends AbstractMojo
 {
@@ -54,14 +54,19 @@ public class DepGraphMojo extends AbstractMojo
     @Override
     public void execute() throws MojoExecutionException
     {
-        if(!this.project.isExecutionRoot())
+        final List<MavenProject> projects = this.session.getProjects();
+        final MavenProject writer = writerProject(this.session);
+        if(this.project != writer)
         {
-            this.getLog().debug(
-                "Skipping " + this.project.getArtifactId() + ", only the execution root writes the page");
+            // Exactly one info line per build, from the first project that is not the writer.
+            if(projects.indexOf(this.project) == (projects.get(0) == writer ? 1 : 0))
+            {
+                this.getLog().info("Dependency graph is written once, from " + writer.getArtifactId()
+                    + "; skipping the other " + (projects.size() - 1) + " reactor project(s)");
+            }
             return;
         }
 
-        final List<MavenProject> projects = this.session.getProjects();
         final List<GraphModel.Module> modules = new ArrayList<>(projects.size());
         final Set<String> reactorNodeIds = new LinkedHashSet<>();
         for(final MavenProject p : projects)
@@ -87,9 +92,9 @@ public class DepGraphMojo extends AbstractMojo
         }
 
         final List<GraphModel.Node> nodes = this.withLatest(mapper.nodes());
-        final GraphModel model = new GraphModel(this.project.getArtifactId(), modules, nodes, mapper.edges());
+        final GraphModel model = new GraphModel(writer.getArtifactId(), modules, nodes, mapper.edges());
 
-        final Path target = this.outputFile.toPath();
+        final Path target = this.targetPath(writer);
         try
         {
             Files.createDirectories(target.getParent());
@@ -97,11 +102,57 @@ public class DepGraphMojo extends AbstractMojo
         }
         catch(final IOException e)
         {
-            throw new MojoExecutionException("Could not write " + this.outputFile, e);
+            throw new MojoExecutionException("Could not write " + target, e);
         }
 
-        this.getLog().info("Dependency graph written to " + this.outputFile
+        this.getLog().info("Dependency graph written to " + target
             + " (" + modules.size() + " modules, " + nodes.size() + " artifacts)");
+    }
+
+    /**
+     * The one project that writes the page. With {@code -pl} or {@code -rf} the project Maven was
+     * started in is not part of the reactor, so the last project to build takes over - by then every
+     * module in the reactor has been collected.
+     */
+    private static MavenProject writerProject(final MavenSession session)
+    {
+        final List<MavenProject> projects = session.getProjects();
+        final Path executionRoot = executionRoot(session);
+        for(final MavenProject p : projects)
+        {
+            if(isExecutionRoot(p, executionRoot))
+            {
+                return p;
+            }
+        }
+        return projects.get(projects.size() - 1);
+    }
+
+    /**
+     * Keeps the page where the build was started: the writer's own {@code target} when it sits in
+     * the directory Maven was started in, that directory's {@code target} otherwise.
+     */
+    private Path targetPath(final MavenProject writer)
+    {
+        final Path configured = this.outputFile.toPath();
+        final Path byDefault = Path.of(writer.getBuild().getDirectory(), "dep-graph.html");
+        final Path executionRoot = executionRoot(this.session);
+        if(!configured.equals(byDefault) || isExecutionRoot(writer, executionRoot))
+        {
+            return configured;
+        }
+        return executionRoot.resolve("target").resolve("dep-graph.html");
+    }
+
+    private static Path executionRoot(final MavenSession session)
+    {
+        return Path.of(session.getExecutionRootDirectory()).toAbsolutePath().normalize();
+    }
+
+    private static boolean isExecutionRoot(final MavenProject p, final Path executionRoot)
+    {
+        final File basedir = p.getBasedir();
+        return basedir != null && basedir.toPath().toAbsolutePath().normalize().equals(executionRoot);
     }
 
     private List<GraphModel.Node> withLatest(final Map<String, GraphModel.Node> collected)
