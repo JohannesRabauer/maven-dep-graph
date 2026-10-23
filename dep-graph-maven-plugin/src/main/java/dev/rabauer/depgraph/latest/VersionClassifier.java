@@ -19,13 +19,13 @@ public final class VersionClassifier {
     // The pre-release tag with its separator and counter, wherever it sits: "-RC1" in "33.0.0-RC1-jre".
     private static final Pattern PRE_RELEASE =
             Pattern.compile("(?i)[._-]?(?<![a-z])(" + UNSTABLE_TOKENS + ")([._+-]?\\d+)?(?![a-z])");
-    // Dash-separated numbers belong to the version too: "-1206" in PostgreSQL's "9.4-1206-jdbc42" is a build.
-    private static final Pattern NUMERIC_PREFIX = Pattern.compile("^v?\\d+([.-]\\d+)*");
+    // Dash- and underscore-separated numbers belong to the version: PostgreSQL's "9.4-1206-jdbc42", cglib's "2.1_3".
+    private static final Pattern NUMERIC_PREFIX = Pattern.compile("^v?\\d+([._-]\\d+)*");
     // Counters that change with every release: "rev20240906" and "build217" are one variant, "-1.5.13" none.
     private static final Pattern COUNTER = Pattern.compile("(rev|build)\\d+");
     // The number after a platform word names the line: "-jdk-11" and "-jdk-8", "-groovy-3.0" and "-groovy-4.0" differ.
     private static final Pattern PLATFORM_NUMBER = Pattern.compile("(jdk|java|jvm|scala|kotlin|groovy|hbase)[._-]?\\d+(\\.\\d+)*");
-    private static final Pattern TRAILING_NUMBERS = Pattern.compile("([.+-]v?\\d+)+$");
+    private static final Pattern TRAILING_NUMBERS = Pattern.compile("([._+-]v?\\d+)+$");
     // Release markers, and Spring's "2.5.6.SEC03" security releases, which continue the plain line.
     private static final Pattern NO_VARIANT = Pattern.compile("[.-](final|release|ga|sec\\d+)");
 

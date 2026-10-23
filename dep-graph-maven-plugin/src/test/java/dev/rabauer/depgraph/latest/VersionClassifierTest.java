@@ -184,6 +184,13 @@ class VersionClassifierTest {
     }
 
     @Test
+    void classifyReadsUnderscoreAsSeparator() {
+        assertEquals("", VersionClassifier.variant("2.7.7_4"));
+        assertEquals(new Latest("2.2.2", "3.3.0", true),
+                VersionClassifier.classify("2.1_3", List.of("2.1", "2.1_3", "2.2", "2.2.2", "3.3.0")));
+    }
+
+    @Test
     void classifyOffersSpringSecurityRelease() {
         assertEquals("", VersionClassifier.variant("2.5.6.SEC02"));
         assertEquals(new Latest("2.5.6.SEC03", "2.5.6.SEC03", true),
