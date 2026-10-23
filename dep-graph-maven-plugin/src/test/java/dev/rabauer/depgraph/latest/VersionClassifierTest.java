@@ -153,6 +153,13 @@ class VersionClassifierTest {
     }
 
     @Test
+    void classifyKeepsGroovyAndHBaseLinesApart() {
+        assertEquals("-hbase-1.3", VersionClassifier.variant("4.14.3-HBase-1.3"));
+        List<String> spock = List.of("2.3-groovy-3.0", "2.3-groovy-4.0", "2.5-groovy-3.0", "2.5-groovy-4.0", "2.5-groovy-6.0");
+        assertEquals(new Latest("2.5-groovy-3.0", "2.5-groovy-3.0", true), VersionClassifier.classify("2.3-groovy-3.0", spock));
+    }
+
+    @Test
     void classifyCrossesRevisionCounter() {
         assertEquals(new Latest("v3-rev20260925-2.0.0", "v3-rev20260925-2.0.0", true),
                 VersionClassifier.classify("v3-rev20240906-2.0.0", List.of("v3-rev20240906-2.0.0", "v3-rev20260925-2.0.0")));
