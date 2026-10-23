@@ -66,10 +66,11 @@ public final class VersionClassifier {
         }
         String currentVariant = variant(current);
         String currentMajor = major(current);
+        boolean currentDated = isDated(currentMajor);
         String overall = null;
         String sameMajor = null;
         for (String v : stableAscending) {
-            if (!variant(v).equals(currentVariant)) {
+            if (!variant(v).equals(currentVariant) || isDated(major(v)) != currentDated) {
                 continue;
             }
             overall = v;
@@ -79,6 +80,11 @@ public final class VersionClassifier {
         }
         boolean newer = sameMajor != null && parse(sameMajor).compareTo(parse(current)) > 0;
         return new GraphModel.Latest(sameMajor, overall, newer);
+    }
+
+    // A date-stamped major ("20040616") is a separate legacy line that sorts above every real release.
+    private static boolean isDated(String major) {
+        return major.length() >= 8;
     }
 
     private static Version parse(String v) {

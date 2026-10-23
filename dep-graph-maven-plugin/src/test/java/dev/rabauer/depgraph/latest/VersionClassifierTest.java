@@ -160,6 +160,16 @@ class VersionClassifierTest {
     }
 
     @Test
+    void classifyKeepsDatedLegacyReleasesApart() {
+        // commons-collections' stable history: date-stamped 2003/2004 builds sort above 3.2.2.
+        List<String> collections = List.of("1.0", "2.0", "2.0.20020914.015953", "2.0.20020914.020746",
+                "2.0.20020914.020858", "2.1", "2.1.1", "3.0", "3.1", "3.2", "3.2.1", "3.2.2",
+                "20030418.083655", "20031027.000000", "20040102.233541", "20040616");
+        assertEquals(new Latest("3.2.2", "3.2.2", true), VersionClassifier.classify("3.2.1", collections));
+        assertEquals(new Latest("20030418.083655", "20040616", false), VersionClassifier.classify("20030418.083655", collections));
+    }
+
+    @Test
     void classifyNullIsNotChecked() {
         assertNull(VersionClassifier.classify("1.0", null));
     }
