@@ -26,8 +26,9 @@ public final class VersionClassifier {
     // The number after a platform word names the line: "-jdk-11" and "-jdk-8", "-groovy-3.0" and "-groovy-4.0" differ.
     private static final Pattern PLATFORM_NUMBER = Pattern.compile("(jdk|java|jvm|scala|kotlin|groovy|hbase)[._-]?\\d+(\\.\\d+)*");
     private static final Pattern TRAILING_NUMBERS = Pattern.compile("([._+-]v?\\d+)+$");
-    // Release markers, Apache's "-incubating" and Spring's "2.5.6.SEC03" security releases continue the plain line.
-    private static final Pattern NO_VARIANT = Pattern.compile("[.-](final|release|ga|incubating|sec\\d+)");
+    // Release markers, Guava's "-jre" (its plain line until 23.0), Apache's "-incubating" and
+    // Spring's "2.5.6.SEC03" security releases all continue the plain line.
+    private static final Pattern NO_VARIANT = Pattern.compile("[.-](final|release|ga|jre|incubating|sec\\d+)");
 
     private VersionClassifier() {
     }

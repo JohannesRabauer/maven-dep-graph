@@ -17,7 +17,7 @@ An artifact removed from the tree by an `<exclusion>` on a dependency; shown as 
 _Avoid_: excluded conflict, missing dependency
 
 **Version variant**:
-The non-numeric suffix family of a version (`-jre`, `-android`, `-jdk11`); `.Final` counts as no suffix. Newer releases are only compared within the same variant.
+The non-numeric suffix family of a version (`-android`, `-jdk11`, `-groovy-4.0`); `.Final`, `.RELEASE` and Guava's `-jre` count as no suffix. Newer releases are only compared within the same variant.
 _Avoid_: flavor, classifier (a different Maven concept)
 
 ## Build
