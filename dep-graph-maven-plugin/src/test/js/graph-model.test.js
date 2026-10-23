@@ -54,16 +54,128 @@ test('managedNotCountedAsConflict', () => {
   assert.strictEqual(M.managedCount(m, new Set(['test'])), 0);
 });
 
-test('hiddenConflictCountOnCollapsedNode', () => {
+test('collapsedConflictCountsCountsHiddenConflicts', () => {
   const a = node('g:a', '1'), b = node('g:b', '1'), c = node('g:c', '1'), d = node('g:d', '2');
   const m = model(['m1'], [a, b, c, d], [
     edge('m1', a.id, 'm1'), edge(a.id, b.id, 'm1'), edge(b.id, c.id, 'm1'),
     edge(b.id, d.id, 'm1', { status: 'DROPPED', requestedVersion: '1' })]);
-  let v = M.visibleNodeIds(m, compile, new Set(['m1']), new Set());
+  let expanded = new Set(['m1']);
+  let v = M.visibleNodeIds(m, compile, expanded, new Set());
   assert.deepStrictEqual([...v].sort(), ['m1', a.id].sort());
-  assert.strictEqual(M.hiddenConflictCount(m, a.id, compile, v), 1);
-  v = M.visibleNodeIds(m, compile, new Set(['m1', a.id, b.id]), new Set());
-  assert.strictEqual(M.hiddenConflictCount(m, a.id, compile, v), 0);
+  let counts = M.collapsedConflictCounts(m, compile, v, expanded, new Set());
+  assert.strictEqual(counts.get(a.id), 1);
+  assert.strictEqual(counts.get('m1'), undefined, 'an expanded module gets no badge');
+  expanded = new Set(['m1', a.id, b.id]);
+  v = M.visibleNodeIds(m, compile, expanded, new Set());
+  counts = M.collapsedConflictCounts(m, compile, v, expanded, new Set());
+  assert.strictEqual(counts.get(a.id), undefined, 'the conflict edge is on the canvas');
+});
+
+test('collapsedConflictCountsIncludesVisibleCollapsedSources', () => {
+  // app -> b is on the canvas, but b is collapsed, so b -> t (dropped) is not.
+  const b = node('g:b', '1'), t = node('g:t', '2');
+  const m = model(['m1'], [b, t], [
+    edge('m1', b.id, 'm1'), edge(b.id, t.id, 'm1', { status: 'DROPPED', requestedVersion: '1' })]);
+  const expanded = new Set(['m1']);
+  const v = M.visibleNodeIds(m, compile, expanded, new Set());
+  const counts = M.collapsedConflictCounts(m, compile, v, expanded, new Set());
+  assert.strictEqual(counts.get(b.id), 1);
+});
+
+test('collapsedConflictCountsStayPerModule', () => {
+  // Both modules use shared, but only m1 has a conflict under it.
+  const shared = node('g:shared', '1'), t = node('g:t', '2');
+  const m = model(['m1', 'm2'], [shared, t], [
+    edge('m1', shared.id, 'm1'), edge('m2', shared.id, 'm2'),
+    edge(shared.id, t.id, 'm1', { status: 'DROPPED', requestedVersion: '1' })]);
+  const expanded = new Set(['m1', 'm2']);
+  const v = M.visibleNodeIds(m, compile, expanded, new Set());
+  const counts = M.collapsedConflictCounts(m, compile, v, expanded, new Set());
+  assert.strictEqual(counts.get(shared.id), 1);
+  assert.strictEqual(counts.get('m1'), undefined);
+  assert.strictEqual(counts.get('m2'), undefined);
+});
+
+test('collapsedConflictCountsGiveCollapsedModulesTheirOwnConflicts', () => {
+  const shared = node('g:shared', '1'), t = node('g:t', '2');
+  const m = model(['m1', 'm2'], [shared, t], [
+    edge('m1', shared.id, 'm1'), edge('m2', shared.id, 'm2'),
+    edge(shared.id, t.id, 'm1', { status: 'DROPPED', requestedVersion: '1' })]);
+  const expanded = new Set();
+  const v = M.visibleNodeIds(m, compile, expanded, new Set());
+  const counts = M.collapsedConflictCounts(m, compile, v, expanded, new Set());
+  assert.strictEqual(counts.get('m1'), 1);
+  assert.strictEqual(counts.get('m2'), undefined, 'm2 has no conflict of its own');
+});
+
+test('collapsedConflictCountsDedupeTheSameConflictAcrossModules', () => {
+  const shared = node('g:shared', '1'), t = node('g:t', '2');
+  const m = model(['m1', 'm2'], [shared, t], [
+    edge('m1', shared.id, 'm1'), edge('m2', shared.id, 'm2'),
+    edge(shared.id, t.id, 'm1', { status: 'DROPPED', requestedVersion: '1' }),
+    edge(shared.id, t.id, 'm2', { status: 'DROPPED', requestedVersion: '1' })]);
+  const expanded = new Set(['m1', 'm2']);
+  const v = M.visibleNodeIds(m, compile, expanded, new Set());
+  const counts = M.collapsedConflictCounts(m, compile, v, expanded, new Set());
+  assert.strictEqual(counts.get(shared.id), 1, 'one conflict triple, not one per module');
+});
+
+test('ancestorsOfWalksPerModule', () => {
+  // a -> b in m1 and b -> t in m2: no module has a path from a to t.
+  const a = node('g:a', '1'), b = node('g:b', '1'), t = node('g:t', '1');
+  const m = model(['m1', 'm2'], [a, b, t], [
+    edge('m1', a.id, 'm1'), edge(a.id, b.id, 'm1'),
+    edge('m2', b.id, 'm2'), edge(b.id, t.id, 'm2')]);
+  assert.deepStrictEqual([...M.ancestorsOf(m, t.id, compile)].sort(), [t.id, b.id, 'm2'].sort());
+});
+
+test('ancestorsOfUnionsOverModules', () => {
+  const a = node('g:a', '1'), t = node('g:t', '1');
+  const m = model(['m1', 'm2'], [a, t], [
+    edge('m1', a.id, 'm1'), edge(a.id, t.id, 'm1'), edge('m2', t.id, 'm2')]);
+  assert.deepStrictEqual([...M.ancestorsOf(m, t.id, compile)].sort(), [t.id, a.id, 'm1', 'm2'].sort());
+});
+
+test('descendantsWalkPerModule', () => {
+  const a = node('g:a', '1'), b = node('g:b', '1'), t = node('g:t', '1');
+  const m = model(['m1', 'm2'], [a, b, t], [
+    edge('m1', a.id, 'm1'), edge(a.id, b.id, 'm1'),
+    edge('m2', b.id, 'm2'), edge(b.id, t.id, 'm2')]);
+  assert.deepStrictEqual([...M.descendants(m, a.id, compile)], [b.id]);
+});
+
+test('nodeMarkersShowDriftAndNewerTogether', () => {
+  const marks = M.nodeMarkers({ dropped: false, managed: false, newer: true, drift: true });
+  assert.deepStrictEqual(marks.map(x => x.marker), ['newer', 'drift']);
+  const slots = marks.map(x => x.x + '/' + x.y);
+  assert.strictEqual(new Set(slots).size, 2, 'the two markers must not share a slot');
+});
+
+test('nodeMarkersConflictBeatsManagedInTheSameSlot', () => {
+  assert.deepStrictEqual(M.nodeMarkers({ dropped: true, managed: true }).map(x => x.marker), ['conflict']);
+  assert.deepStrictEqual(M.nodeMarkers({ managed: true }).map(x => x.marker), ['managed']);
+  assert.deepStrictEqual(M.nodeMarkers({}), []);
+  assert.deepStrictEqual(M.nodeMarkers({ dropped: true, drift: true }).map(x => x.marker), ['conflict', 'drift']);
+});
+
+test('decodesIndexEncodedEdges', () => {
+  const a = node('g:a', '1'), b = node('g:b', '2');
+  const data = {
+    title: 't',
+    modules: [{ nodeId: 'm1', name: 'm1' }],
+    nodes: [mod('m1'), a, b],
+    scopeNames: ['compile', 'test'],
+    versions: ['1.0'],
+    managedBys: ['com.example:bom:1'],
+    edges: [[0, 1, 0, 0, 0], [1, 2, 0, 1, 4 | 2, 0], [0, 2, 0, -1, 1, 0, 0]]
+  };
+  const m = M.createModel(data);
+  assert.deepStrictEqual(m.edges[0], { from: 'm1', to: a.id, module: 'm1', scope: 'compile', optional: false, status: 'KEPT', requestedVersion: null, managedBy: null });
+  assert.deepStrictEqual(m.edges[1], { from: a.id, to: b.id, module: 'm1', scope: 'test', optional: true, status: 'DROPPED', requestedVersion: '1.0', managedBy: null });
+  assert.deepStrictEqual(m.edges[2], { from: 'm1', to: b.id, module: 'm1', scope: null, optional: false, status: 'MANAGED', requestedVersion: '1.0', managedBy: 'com.example:bom:1' });
+  assert.strictEqual(m.droppedEdges.length, 1);
+  assert.strictEqual(m.managedEdges.length, 1);
+  assert.ok(M.edgeEnabled(m.edges[2], compile), 'a null scope still means compile');
 });
 
 test('pathsFromRootListsEveryModulePath', () => {

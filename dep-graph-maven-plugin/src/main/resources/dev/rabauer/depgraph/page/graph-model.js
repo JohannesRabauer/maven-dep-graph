@@ -2,12 +2,47 @@
   'use strict';
 
   const STATUS_RANK = { KEPT: 0, MANAGED: 1, DROPPED: 2 };
+  const STATUS_NAMES = ['KEPT', 'MANAGED', 'DROPPED'];
+  const OPTIONAL_FLAG = 4;
+
+  /**
+   * Index-encoded edges: `[fromIdx, toIdx, moduleIdx, scopeIdx, flags, requestedVersionIdx?,
+   * managedByIdx?]`, where the trailing two entries are omitted when they are absent. Repeating
+   * the full coordinate strings on every edge costs about ten times as much on a large reactor.
+   */
+  function decodeEdges(data) {
+    const ids = (data.nodes || []).map(function (n) { return n.id; }).concat(data.extraIds || []);
+    const moduleIds = (data.modules || []).map(function (m) { return m.nodeId; });
+    const scopes = data.scopeNames || [];
+    const versions = data.versions || [];
+    const managedBys = data.managedBys || [];
+    const statuses = data.statusNames || STATUS_NAMES;
+    return data.edges.map(function (a) {
+      return {
+        from: ids[a[0]],
+        to: ids[a[1]],
+        module: moduleIds[a[2]],
+        scope: a[3] < 0 ? null : scopes[a[3]],
+        optional: (a[4] & OPTIONAL_FLAG) !== 0,
+        status: statuses[a[4] & 3],
+        requestedVersion: a.length > 5 && a[5] >= 0 ? versions[a[5]] : null,
+        managedBy: a.length > 6 && a[6] >= 0 ? managedBys[a[6]] : null
+      };
+    });
+  }
+
+  function edgesOf(data) {
+    const raw = data.edges || [];
+    return raw.length && Array.isArray(raw[0]) ? decodeEdges(data) : raw;
+  }
 
   function createModel(data) {
     const nodesById = new Map();
     const outEdges = new Map();
     const inEdges = new Map();
     const moduleIds = new Set();
+    const droppedEdges = [];
+    const managedEdges = [];
     for (const m of data.modules || []) moduleIds.add(m.nodeId);
     for (const n of data.nodes || []) {
       nodesById.set(n.id, n);
@@ -18,15 +53,68 @@
       if (!outEdges.has(id)) outEdges.set(id, []);
       if (!inEdges.has(id)) inEdges.set(id, []);
     }
-    for (const e of data.edges || []) {
+    const edges = edgesOf(data);
+    for (const e of edges) {
       if (!outEdges.has(e.from)) outEdges.set(e.from, []);
       if (!inEdges.has(e.from)) inEdges.set(e.from, []);
       if (!outEdges.has(e.to)) outEdges.set(e.to, []);
       if (!inEdges.has(e.to)) inEdges.set(e.to, []);
       outEdges.get(e.from).push(e);
       inEdges.get(e.to).push(e);
+      if (e.status === 'DROPPED') droppedEdges.push(e);
+      else if (e.status === 'MANAGED') managedEdges.push(e);
     }
-    return { data, nodesById, outEdges, inEdges, moduleIds, modules: data.modules || [], edges: data.edges || [] };
+    return {
+      data: data, nodesById: nodesById, outEdges: outEdges, inEdges: inEdges, moduleIds: moduleIds,
+      modules: data.modules || [], edges: edges, droppedEdges: droppedEdges, managedEdges: managedEdges,
+      byModule: null
+    };
+  }
+
+  /**
+   * Per-module adjacency, built once on first use. Every per-module walk would otherwise rescan
+   * the global neighbour lists of shared artifacts, which carry one entry per depending module.
+   */
+  function moduleIndex(model) {
+    if (model.byModule) return model.byModule;
+    const out = new Map();
+    const into = new Map();
+    for (const e of model.edges) {
+      const ok = e.module + '\u0000' + e.from;
+      const ik = e.module + '\u0000' + e.to;
+      let list = out.get(ok);
+      if (!list) out.set(ok, list = []);
+      list.push(e);
+      list = into.get(ik);
+      if (!list) into.set(ik, list = []);
+      list.push(e);
+    }
+    model.byModule = { out: out, in: into };
+    return model.byModule;
+  }
+
+  function moduleOut(model, moduleId, nodeId) {
+    return moduleIndex(model).out.get(moduleId + '\u0000' + nodeId) || [];
+  }
+
+  function moduleIn(model, moduleId, nodeId) {
+    return moduleIndex(model).in.get(moduleId + '\u0000' + nodeId) || [];
+  }
+
+  function modulesOut(model, nodeId, scopes) {
+    const mods = new Set();
+    for (const e of model.outEdges.get(nodeId) || []) {
+      if (edgeEnabled(e, scopes)) mods.add(e.module);
+    }
+    return mods;
+  }
+
+  function modulesIn(model, nodeId, scopes) {
+    const mods = new Set();
+    for (const e of model.inEdges.get(nodeId) || []) {
+      if (edgeEnabled(e, scopes)) mods.add(e.module);
+    }
+    return mods;
   }
 
   function edgeEnabled(edge, scopes) {
@@ -81,7 +169,7 @@
   }
 
   function conflictTriples(model, scopes) {
-    return triplesOf(model, model.edges.filter(function (e) { return edgeEnabled(e, scopes); }));
+    return triplesOf(model, model.droppedEdges.filter(function (e) { return edgeEnabled(e, scopes); }));
   }
 
   function conflictCountForModule(model, moduleId, scopes) {
@@ -90,36 +178,115 @@
 
   function managedCount(model, scopes) {
     const seen = new Set();
-    for (const e of model.edges) {
-      if (e.status === 'MANAGED' && edgeEnabled(e, scopes)) seen.add(e.to + '\u0000' + e.requestedVersion);
+    for (const e of model.managedEdges) {
+      if (edgeEnabled(e, scopes)) seen.add(e.to + '\u0000' + e.requestedVersion);
     }
     return seen.size;
   }
 
+  /**
+   * Everything the node depends on, as the union of the per-module reaches. A chain that only
+   * exists by combining two modules is not a dependency of anything the build actually produces.
+   */
   function descendants(model, nodeId, scopes) {
     const result = new Set();
-    const stack = [nodeId];
-    while (stack.length) {
-      const id = stack.pop();
-      for (const e of enabledOut(model, id, scopes)) {
-        if (!result.has(e.to)) {
+    for (const moduleId of modulesOut(model, nodeId, scopes)) {
+      const stack = [nodeId];
+      const seen = new Set([nodeId]);
+      while (stack.length) {
+        const id = stack.pop();
+        for (const e of moduleOut(model, moduleId, id)) {
+          if (!edgeEnabled(e, scopes)) continue;
           result.add(e.to);
-          stack.push(e.to);
+          if (!seen.has(e.to)) {
+            seen.add(e.to);
+            stack.push(e.to);
+          }
         }
       }
     }
     return result;
   }
 
-  function hiddenConflictCount(model, nodeId, scopes, visible) {
-    const sources = descendants(model, nodeId, scopes);
-    sources.add(nodeId);
-    const edges = [];
-    for (const id of sources) {
-      if (visible.has(id)) continue;
-      for (const e of enabledOut(model, id, scopes)) edges.push(e);
+  function moduleReverseReach(model, moduleId, startId, scopes, cache) {
+    const key = moduleId + '\u0000' + startId;
+    let reach = cache && cache.get(key);
+    if (reach) return reach;
+    reach = new Set([startId]);
+    const stack = [startId];
+    while (stack.length) {
+      const id = stack.pop();
+      for (const e of moduleIn(model, moduleId, id)) {
+        if (!edgeEnabled(e, scopes) || reach.has(e.from)) continue;
+        reach.add(e.from);
+        stack.push(e.from);
+      }
     }
-    return triplesOf(model, edges).length;
+    if (cache) cache.set(key, reach);
+    return reach;
+  }
+
+  /**
+   * Every node on a path from a module root to `nodeId`, as the union of the per-module ancestor
+   * sets. Only a module that requests the node directly somewhere can have a path to it, so the
+   * walk never starts in a module that cannot reach it.
+   */
+  function ancestorsOf(model, nodeId, scopes) {
+    const result = new Set([nodeId]);
+    for (const moduleId of modulesIn(model, nodeId, scopes)) {
+      for (const id of moduleReverseReach(model, moduleId, nodeId, scopes, null)) result.add(id);
+    }
+    return result;
+  }
+
+  /** A node is open when its own out-edges are drawn; everything below a closed node is hidden. */
+  function isOpen(id, expanded, hidden) {
+    return expanded.has(id) && !hidden.has(id);
+  }
+
+  /**
+   * The red count of every visible, closed node: the conflicts that sit below it and are not on
+   * the canvas. Counted per module, so a conflict that only one module has under a shared artifact
+   * is never credited to the other modules that use the same artifact.
+   */
+  function collapsedConflictCounts(model, scopes, visible, expanded, hidden) {
+    const counts = new Map();
+    const bySource = new Map();
+    for (const e of model.droppedEdges) {
+      if (!edgeEnabled(e, scopes)) continue;
+      if (visible.has(e.from) && isOpen(e.from, expanded, hidden)) continue;
+      const sourceKey = e.module + '\u0000' + e.from;
+      let source = bySource.get(sourceKey);
+      if (!source) bySource.set(sourceKey, source = { module: e.module, from: e.from, keys: new Set() });
+      source.keys.add(gaOf(model, e.to) + '\u0000' + e.to + '\u0000' + e.requestedVersion);
+    }
+    if (!bySource.size) return counts;
+    const cache = new Map();
+    const seen = new Map();
+    for (const source of bySource.values()) {
+      for (const id of moduleReverseReach(model, source.module, source.from, scopes, cache)) {
+        if (!visible.has(id) || isOpen(id, expanded, hidden)) continue;
+        let keys = seen.get(id);
+        if (!keys) seen.set(id, keys = new Set());
+        for (const key of source.keys) keys.add(key);
+      }
+    }
+    for (const entry of seen) counts.set(entry[0], entry[1].size);
+    return counts;
+  }
+
+  /**
+   * The marker slots of one node. Conflict and managed share the top-left corner because they are
+   * mutually exclusive; "newer version" and "version drift" get a corner each, so a drifting node
+   * that also has a newer release still shows both.
+   */
+  function nodeMarkers(flags) {
+    const marks = [];
+    if (flags.dropped) marks.push({ marker: 'conflict', x: '0%', y: '0%', offX: -3, offY: -3 });
+    else if (flags.managed) marks.push({ marker: 'managed', x: '0%', y: '0%', offX: -3, offY: -3 });
+    if (flags.newer) marks.push({ marker: 'newer', x: '100%', y: '0%', offX: 3, offY: -3 });
+    if (flags.drift) marks.push({ marker: 'drift', x: '100%', y: '100%', offX: 3, offY: 3 });
+    return marks;
   }
 
   const MAX_EXPANSIONS = 200000;
@@ -129,8 +296,8 @@
     const queue = [nodeId];
     for (let i = 0; i < queue.length; i++) {
       const id = queue[i];
-      for (const e of model.inEdges.get(id) || []) {
-        if (e.module !== moduleId || !edgeEnabled(e, scopes) || dist.has(e.from)) continue;
+      for (const e of moduleIn(model, moduleId, id)) {
+        if (!edgeEnabled(e, scopes) || dist.has(e.from)) continue;
         dist.set(e.from, dist.get(id) + 1);
         queue.push(e.from);
       }
@@ -161,10 +328,10 @@
           continue;
         }
         const tried = new Set();
-        const outs = model.outEdges.get(last) || [];
+        const outs = moduleOut(model, moduleId, last);
         for (let k = outs.length - 1; k >= 0; k--) {
           const e = outs[k];
-          if (e.module !== moduleId || !edgeEnabled(e, scopes) || !dist.has(e.to)
+          if (!edgeEnabled(e, scopes) || !dist.has(e.to)
               || tried.has(e.to) || path.includes(e.to)) continue;
           tried.add(e.to);
           push(path.concat(e.to));
@@ -179,7 +346,10 @@
     const max = limit === undefined ? 50 : limit;
     const out = [];
     const seen = new Set();
-    for (const m of Array.from(model.moduleIds).sort()) {
+    // Only a module that requests the node somewhere can have a path to it.
+    const candidates = modulesIn(model, nodeId, scopes);
+    if (model.moduleIds.has(nodeId)) candidates.add(nodeId);
+    for (const m of Array.from(candidates).sort()) {
       const paths = m === nodeId ? [[m]] : modulePaths(model, m, nodeId, scopes, max);
       for (const p of paths) {
         const key = p.join('\u0000');
@@ -235,18 +405,22 @@
 
   function mergedEdges(model, visible, scopes) {
     const map = new Map();
-    for (const e of model.edges) {
-      if (!edgeEnabled(e, scopes) || !visible.has(e.from) || !visible.has(e.to)) continue;
-      const key = e.from + '\u0000' + e.to;
-      let m = map.get(key);
-      if (!m) {
-        m = { from: e.from, to: e.to, status: e.status, optional: true, requestedVersions: new Set(), modules: new Set() };
-        map.set(key, m);
+    // Only the out-edges of visible nodes can produce a visible edge, so the whole edge list is
+    // never scanned per render.
+    for (const from of visible) {
+      for (const e of model.outEdges.get(from) || []) {
+        if (!edgeEnabled(e, scopes) || !visible.has(e.to)) continue;
+        const key = e.from + '\u0000' + e.to;
+        let m = map.get(key);
+        if (!m) {
+          m = { from: e.from, to: e.to, status: e.status, optional: true, requestedVersions: new Set(), modules: new Set() };
+          map.set(key, m);
+        }
+        if ((STATUS_RANK[e.status] || 0) > (STATUS_RANK[m.status] || 0)) m.status = e.status;
+        if (!e.optional) m.optional = false;
+        if (e.requestedVersion != null) m.requestedVersions.add(e.requestedVersion);
+        m.modules.add(e.module);
       }
-      if ((STATUS_RANK[e.status] || 0) > (STATUS_RANK[m.status] || 0)) m.status = e.status;
-      if (!e.optional) m.optional = false;
-      if (e.requestedVersion != null) m.requestedVersions.add(e.requestedVersion);
-      m.modules.add(e.module);
     }
     return Array.from(map.values()).map(function (m) {
       m.requestedVersions = Array.from(m.requestedVersions).sort();
@@ -276,9 +450,9 @@
   }
 
   const api = {
-    createModel, edgeEnabled, visibleNodeIds, conflictTriples, conflictCountForModule,
-    managedCount, hiddenConflictCount, pathsFromRoot, descendants, driftGroups,
-    mergedEdges, search, nextConflict
+    createModel, decodeEdges, edgeEnabled, visibleNodeIds, conflictTriples, conflictCountForModule,
+    managedCount, collapsedConflictCounts, nodeMarkers, pathsFromRoot, descendants, ancestorsOf,
+    driftGroups, mergedEdges, search, nextConflict
   };
   root.DepGraphModel = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

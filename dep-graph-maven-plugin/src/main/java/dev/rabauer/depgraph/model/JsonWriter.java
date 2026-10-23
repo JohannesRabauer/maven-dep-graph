@@ -1,13 +1,51 @@
 package dev.rabauer.depgraph.model;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.BiConsumer;
 
 public final class JsonWriter {
 
+    /** Bit set on an edge's {@code flags} when the dependency is optional. */
+    private static final int OPTIONAL_FLAG = 4;
+
     private JsonWriter() {}
 
     public static String toJson(GraphModel m) {
+        Table ids = new Table();
+        for (GraphModel.Node n : m.nodes()) {
+            ids.indexOf(n.id());
+        }
+        int knownIds = ids.size();
+        Table moduleIds = new Table();
+        for (GraphModel.Module mod : m.modules()) {
+            moduleIds.indexOf(mod.nodeId());
+        }
+        Table scopes = new Table();
+        Table versions = new Table();
+        Table managedBys = new Table();
+
+        // Edges reference the node, module and string tables by index: repeating the full
+        // coordinates on every edge costs about ten times as much on a large reactor.
+        StringBuilder edges = new StringBuilder();
+        array(edges, m.edges(), (b, x) -> {
+            int flags = (x.status() == null ? 0 : x.status().ordinal()) | (x.optional() ? OPTIONAL_FLAG : 0);
+            int requested = versions.indexOrMinusOne(x.requestedVersion());
+            int managedBy = managedBys.indexOrMinusOne(x.managedBy());
+            b.append('[').append(ids.indexOf(x.from())).append(',').append(ids.indexOf(x.to()))
+                    .append(',').append(moduleIds.indexOf(x.module()))
+                    .append(',').append(scopes.indexOrMinusOne(x.scope()))
+                    .append(',').append(flags);
+            if (managedBy >= 0) {
+                b.append(',').append(requested).append(',').append(managedBy);
+            } else if (requested >= 0) {
+                b.append(',').append(requested);
+            }
+            b.append(']');
+        });
+
         StringBuilder sb = new StringBuilder();
         sb.append('{');
         key(sb, "title").append(str(m.title())).append(',');
@@ -43,21 +81,51 @@ public final class JsonWriter {
             b.append('}');
         });
         sb.append(',');
-        key(sb, "edges");
-        array(sb, m.edges(), (b, x) -> {
-            b.append('{');
-            key(b, "from").append(str(x.from())).append(',');
-            key(b, "to").append(str(x.to())).append(',');
-            key(b, "module").append(str(x.module())).append(',');
-            key(b, "scope").append(str(x.scope())).append(',');
-            key(b, "optional").append(x.optional()).append(',');
-            key(b, "status").append(str(x.status() == null ? null : x.status().name())).append(',');
-            key(b, "requestedVersion").append(str(x.requestedVersion())).append(',');
-            key(b, "managedBy").append(str(x.managedBy()));
-            b.append('}');
-        });
+        // Edge endpoints that no node carries, indexed behind the node ids.
+        key(sb, "extraIds");
+        strings(sb, ids.values().subList(knownIds, ids.size()));
+        sb.append(',');
+        key(sb, "scopeNames");
+        strings(sb, scopes.values());
+        sb.append(',');
+        key(sb, "statusNames");
+        strings(sb, java.util.Arrays.stream(EdgeStatus.values()).map(Enum::name).toList());
+        sb.append(',');
+        key(sb, "versions");
+        strings(sb, versions.values());
+        sb.append(',');
+        key(sb, "managedBys");
+        strings(sb, managedBys.values());
+        sb.append(',');
+        key(sb, "edges").append(edges);
         sb.append('}');
         return sb.toString();
+    }
+
+    /** Insertion-ordered string table; {@code null} never gets an index. */
+    private static final class Table {
+
+        private final Map<String, Integer> indices = new LinkedHashMap<>();
+
+        int indexOf(String value) {
+            return indices.computeIfAbsent(value, v -> indices.size());
+        }
+
+        int indexOrMinusOne(String value) {
+            return value == null ? -1 : indexOf(value);
+        }
+
+        int size() {
+            return indices.size();
+        }
+
+        List<String> values() {
+            return new ArrayList<>(indices.keySet());
+        }
+    }
+
+    private static void strings(StringBuilder sb, List<String> values) {
+        array(sb, values, (b, x) -> b.append(str(x)));
     }
 
     private static StringBuilder key(StringBuilder sb, String name) {

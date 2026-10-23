@@ -35,6 +35,25 @@ class JsonWriterTest {
 
     @Test
     void enumsAsNames() {
-        assertTrue(JsonWriter.toJson(model("t", null, EdgeStatus.DROPPED)).contains("\"status\":\"DROPPED\""));
+        String json = JsonWriter.toJson(model("t", null, EdgeStatus.DROPPED));
+        assertTrue(json.contains("\"statusNames\":[\"KEPT\",\"MANAGED\",\"DROPPED\"]"), json);
+    }
+
+    @Test
+    void encodesEdgesWithIndices() {
+        // node 0 = g:a:1, extra id 0 (index 1) = g:b:2, module 0, scope 0, flags = DROPPED
+        String json = JsonWriter.toJson(model("t", null, EdgeStatus.DROPPED));
+        assertTrue(json.contains("\"extraIds\":[\"g:b:2\"]"), json);
+        assertTrue(json.contains("\"scopeNames\":[\"compile\"]"), json);
+        assertTrue(json.contains("\"versions\":[\"3\"]"), json);
+        assertTrue(json.contains("\"managedBys\":[]"), json);
+        assertTrue(json.contains("\"edges\":[[0,1,0,0,2,0]]"), json);
+    }
+
+    @Test
+    void omitsTrailingEdgeFieldsWhenAbsent() {
+        String json = JsonWriter.toJson(model("t", null, EdgeStatus.KEPT));
+        assertTrue(json.contains("\"edges\":[[0,1,0,0,0]]"), json);
+        assertTrue(json.contains("\"versions\":[]"), json);
     }
 }
