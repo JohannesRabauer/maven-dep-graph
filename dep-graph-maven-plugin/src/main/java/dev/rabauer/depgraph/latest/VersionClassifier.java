@@ -14,7 +14,7 @@ public final class VersionClassifier {
 
     // An unstable token only counts as a whole word, so "1.0-sources" and "1.0.1-premium" stay stable.
     private static final String UNSTABLE_TOKENS =
-            "snapshot|alpha|beta|m\\d+|rc|cr|preview|ea|dev|pre|b\\d+|milestone|nightly|canary";
+            "snapshot|alpha|beta|m\\d+|rc|cr|preview|ea|dev|pre|pr\\d+|b\\d+|milestone|nightly|canary";
     private static final Pattern UNSTABLE = Pattern.compile("(?i)(^|[^a-z])(" + UNSTABLE_TOKENS + ")(?![a-z])");
     // The pre-release tag with its separator and counter, wherever it sits: "-RC1" in "33.0.0-RC1-jre".
     private static final Pattern PRE_RELEASE =

@@ -19,7 +19,7 @@ class VersionClassifierTest {
     void isStable() {
         for (String v : List.of("2.0.0-SNAPSHOT", "1.0.0-alpha1", "3.0.0-M2", "3.0.0-RC1",
                 "5.0.0.CR1", "1.0.0-preview", "2.0-beta", "21-ea", "1.0.dev3", "2.0-b01", "1.0-pre1",
-                "1.0.Beta1", "8.0-milestone-1", "1.0-nightly", "1.0-canary", "22-ea+11")) {
+                "1.0.Beta1", "8.0-milestone-1", "1.0-nightly", "1.0-canary", "22-ea+11", "2.9.0.pr1")) {
             assertFalse(VersionClassifier.isStable(v), v);
         }
         for (String v : List.of("2.19.2", "1.2.3.Final", "1.0-sources", "33.0.0-jre", "33.0.0-android",
