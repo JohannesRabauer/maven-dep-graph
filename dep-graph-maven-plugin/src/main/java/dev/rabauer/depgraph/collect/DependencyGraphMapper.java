@@ -66,8 +66,10 @@ public final class DependencyGraphMapper {
         }
 
         addEdge(keptOrManaged(parentId, childId, module, scope, optional, child, managed));
+        boolean isModule = reactorNodeIds.contains(childId);
         nodes.computeIfAbsent(childId, id -> new GraphModel.Node(id, a.getGroupId(), a.getArtifactId(),
-                a.getVersion(), a.getExtension(), a.getClassifier(), reactorNodeIds.contains(id), null));
+                a.getVersion(), isModule ? "jar" : a.getExtension(), isModule ? "" : a.getClassifier(),
+                isModule, null));
         if (visited.add(childId)) {
             stack.push(new Pending(childId, child));
         }
@@ -91,7 +93,13 @@ public final class DependencyGraphMapper {
         }
     }
 
-    private static String idOf(Artifact a) {
+    private String idOf(Artifact a) {
+        // A reactor sibling consumed as war/pom/test-jar is still the same module node, so match
+        // reactor membership on g:a:v and keep it a single green node.
+        String gav = a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion();
+        if (reactorNodeIds.contains(gav)) {
+            return gav;
+        }
         return GraphModel.nodeId(a.getGroupId(), a.getArtifactId(), a.getExtension(), a.getClassifier(),
                 a.getVersion());
     }

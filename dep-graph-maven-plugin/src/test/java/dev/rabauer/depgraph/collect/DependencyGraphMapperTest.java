@@ -111,6 +111,21 @@ class DependencyGraphMapperTest {
     }
 
     @Test
+    void siblingConsumedAsWarCollapsesIntoTheModuleNode() {
+        DefaultDependencyNode r1 = root("m", "m1", "1");
+        DefaultDependencyNode war =
+                new DefaultDependencyNode(new Dependency(new DefaultArtifact("m", "m2", "war", "1"), "compile"));
+        children(r1, war);
+        DependencyGraphMapper mapper = new DependencyGraphMapper(Set.of("m:m1:1", "m:m2:1"));
+        mapper.addModuleGraph("m:m1:1", r1, NONE);
+        mapper.addModuleGraph("m:m2:1", root("m", "m2", "1"), NONE);
+        assertEquals(2, mapper.nodes().size());
+        assertTrue(mapper.nodes().get("m:m2:1").module());
+        assertEquals("jar", mapper.nodes().get("m:m2:1").type());
+        assertEquals(List.of("m:m2:1"), mapper.edges().stream().map(Edge::to).toList());
+    }
+
+    @Test
     void moduleRootIsNode() {
         DefaultDependencyNode root = root("m", "agg", "1");
         DependencyGraphMapper mapper = new DependencyGraphMapper(Set.of("m:agg:1"));
