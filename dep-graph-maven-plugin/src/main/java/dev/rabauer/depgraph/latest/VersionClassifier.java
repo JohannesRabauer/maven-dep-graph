@@ -7,6 +7,7 @@ import org.eclipse.aether.version.Version;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class VersionClassifier {
@@ -35,10 +36,10 @@ public final class VersionClassifier {
 
     /** Suffix family of a version; candidates of another variant are never offered as an update. */
     public static String variant(String v) {
-        if (!isStable(v)) {
-            return "";
-        }
-        String rest = NUMERIC_PREFIX.matcher(v).replaceFirst("").toLowerCase(Locale.ROOT);
+        // A pre-release keeps its platform suffix: "33.0.0-jre-SNAPSHOT" belongs to "-jre".
+        Matcher unstable = UNSTABLE.matcher(v);
+        String release = unstable.find() ? v.substring(0, unstable.start()) : v;
+        String rest = NUMERIC_PREFIX.matcher(release).replaceFirst("").toLowerCase(Locale.ROOT);
         return NO_VARIANT.matcher(rest).matches() ? "" : rest;
     }
 

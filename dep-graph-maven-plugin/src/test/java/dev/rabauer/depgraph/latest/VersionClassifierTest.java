@@ -88,6 +88,19 @@ class VersionClassifierTest {
     }
 
     @Test
+    void variantOfPreReleaseKeepsPlatformSuffix() {
+        assertEquals("-jre", VersionClassifier.variant("33.0.0-jre-SNAPSHOT"));
+        assertEquals("-android", VersionClassifier.variant("33.0.0-android-rc1"));
+        assertEquals("", VersionClassifier.variant("3.0.0.CR1"));
+    }
+
+    @Test
+    void classifyPreReleaseWithPlatformSuffixStaysInVariant() {
+        assertEquals(new Latest("33.0.1-jre", "33.0.1-jre", true),
+                VersionClassifier.classify("33.0.0-jre-SNAPSHOT", List.of("33.0.1", "33.0.1-jre")));
+    }
+
+    @Test
     void classifyNullIsNotChecked() {
         assertNull(VersionClassifier.classify("1.0", null));
     }
