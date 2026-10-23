@@ -461,7 +461,8 @@
    */
   function render(force, after) {
     const view = computeView();
-    if (!force && view.visible.size > MAX_VISIBLE) {
+    // Only a draw that grows past the limit asks; one already accepted, or shrinking, does not.
+    if (!force && view.visible.size > MAX_VISIBLE && view.visible.size > cy.nodes().length) {
       confirmLarge(view.visible.size, function (ok) {
         if (!ok) {
           restore(lastGood);
