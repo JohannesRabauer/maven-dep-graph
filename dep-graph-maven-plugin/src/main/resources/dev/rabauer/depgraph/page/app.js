@@ -8,7 +8,6 @@
   const SEARCH_LIMIT = 20;
   const MIN_INITIAL_ZOOM = 0.5;
   const INITIAL_FOCUS_MODULES = 5;
-  const BADGE_SOURCE_LIMIT = 200;
   const BADGE_RENDER_LIMIT = 300;
   const SCOPE_NAMES = ['compile', 'runtime', 'provided', 'test', 'system'];
   const THEMES = ['auto', 'dark', 'light'];
@@ -60,6 +59,7 @@
     badges: document.getElementById('badges'),
     panel: document.getElementById('panel'),
     menu: document.getElementById('context-menu'),
+    live: document.getElementById('a11y-live'),
     warning: document.getElementById('warning-dialog')
   };
 
@@ -109,7 +109,9 @@
     showManaged: true,
     showDrift: false,
     theme: 'auto',
-    selected: null
+    selected: null,
+    revealedPath: null,
+    focused: null
   };
 
   const drift = M.driftGroups(model);
@@ -158,11 +160,6 @@
     syncFilterBar();
   }
 
-  function gaOf(id) {
-    const n = model.nodesById.get(id);
-    return n ? n.groupId + ':' + n.artifactId : id;
-  }
-
   function computeView() {
     let visible = M.visibleNodeIds(model, state.scopes, state.expanded, state.hidden);
     let onPath = null;
@@ -179,73 +176,30 @@
     return { visible: visible, onPath: onPath, edges: M.mergedEdges(model, visible, state.scopes) };
   }
 
-  function reverseReach(startId, cache) {
-    let reach = cache.get(startId);
-    if (reach) return reach;
-    reach = new Set([startId]);
-    const queue = [startId];
-    while (queue.length) {
-      const id = queue.pop();
-      for (const e of model.inEdges.get(id) || []) {
-        if (!M.edgeEnabled(e, state.scopes) || reach.has(e.from)) continue;
-        reach.add(e.from);
-        queue.push(e.from);
-      }
-    }
-    cache.set(startId, reach);
-    return reach;
-  }
-
   /**
    * Every node on any path from a module root to `nodeId`, which is exactly the node's ancestor
-   * set in the enabled scopes. Enumerating the paths themselves is bounded on purpose, because
-   * their number can grow exponentially.
+   * set in the enabled scopes, walked per module. Enumerating the paths themselves is bounded on
+   * purpose, because their number can grow exponentially.
    */
   function ancestorsOf(nodeId) {
-    return reverseReach(nodeId, new Map());
-  }
-
-  function collapsed(id, visible) {
-    return visible.has(id) && !state.expanded.has(id);
+    return M.ancestorsOf(model, nodeId, state.scopes);
   }
 
   /**
-   * Conflicts that sit below a collapsed node, counted once per (group:artifact, winner, dropped
-   * version). Walking up from the few hidden DROPPED sources is far cheaper than asking for every
-   * node's descendants.
+   * The red count of every visible, closed node: the conflicts below it that the canvas does not
+   * show, counted per module so one module's conflict under a shared artifact is never credited to
+   * another module.
    */
   function computeBadges(visible) {
-    const bySource = new Map();
-    for (const e of model.edges) {
-      if (e.status !== 'DROPPED' || visible.has(e.from) || !M.edgeEnabled(e, state.scopes)) continue;
-      const key = gaOf(e.to) + '\u0000' + e.to + '\u0000' + e.requestedVersion;
-      let keys = bySource.get(e.from);
-      if (!keys) bySource.set(e.from, keys = new Set());
-      keys.add(key);
-    }
-    const counts = new Map();
-    if (!bySource.size) return counts;
-    if (bySource.size > BADGE_SOURCE_LIMIT) {
-      for (const triple of scopeInfo().triples) {
-        for (const moduleId of triple.modules) {
-          if (collapsed(moduleId, visible)) counts.set(moduleId, (counts.get(moduleId) || 0) + 1);
-        }
-      }
-      return counts;
-    }
-    const cache = new Map();
-    const seen = new Map();
-    for (const entry of bySource) {
-      for (const id of reverseReach(entry[0], cache)) {
-        if (!collapsed(id, visible)) continue;
-        let keys = seen.get(id);
-        if (!keys) seen.set(id, keys = new Set());
-        for (const key of entry[1]) keys.add(key);
-      }
-    }
-    for (const entry of seen) counts.set(entry[0], entry[1].size);
-    return counts;
+    return M.collapsedConflictCounts(model, state.scopes, visible, state.expanded, state.hidden);
   }
+
+  const MARKER_ICONS = {
+    conflict: WARNING_ICON,
+    managed: DIAMOND_ICON,
+    newer: NEWER_DOT,
+    drift: DRIFT_DOT
+  };
 
   function nodeElement(id, ctx) {
     const n = model.nodesById.get(id);
@@ -259,31 +213,18 @@
     const ys = [];
     const offX = [];
     const offY = [];
-    if (dropped) {
-      images.push(WARNING_ICON);
-      xs.push('0%');
-      ys.push('0%');
-      offX.push(-3);
-      offY.push(-3);
-    } else if (managed) {
-      images.push(DIAMOND_ICON);
-      xs.push('0%');
-      ys.push('0%');
-      offX.push(-3);
-      offY.push(-3);
-    }
-    if (n && n.latest && n.latest.newerInSameMajor) {
-      images.push(NEWER_DOT);
-      xs.push('100%');
-      ys.push('0%');
-      offX.push(3);
-      offY.push(-3);
-    } else if (state.showDrift && driftMembers.has(id)) {
-      images.push(DRIFT_DOT);
-      xs.push('100%');
-      ys.push('0%');
-      offX.push(3);
-      offY.push(-3);
+    const marks = M.nodeMarkers({
+      dropped: dropped,
+      managed: managed,
+      newer: !!(n && n.latest && n.latest.newerInSameMajor),
+      drift: state.showDrift && driftMembers.has(id)
+    });
+    for (const mark of marks) {
+      images.push(MARKER_ICONS[mark.marker]);
+      xs.push(mark.x);
+      ys.push(mark.y);
+      offX.push(mark.offX);
+      offY.push(mark.offY);
     }
     return {
       group: 'nodes',
@@ -303,9 +244,10 @@
     };
   }
 
-  function edgeElement(e) {
+  function edgeElement(e, ctx) {
     const wants = e.requestedVersions.length ? 'wants ' + e.requestedVersions.join(', ') : '';
     const managed = e.status === 'MANAGED' && state.showManaged;
+    const dimmed = ctx.onPath && (!ctx.onPath.has(e.from) || !ctx.onPath.has(e.to));
     return {
       group: 'edges',
       data: {
@@ -315,6 +257,7 @@
         status: e.status,
         managed: managed ? 1 : 0,
         optional: e.optional ? 1 : 0,
+        dim: dimmed ? 1 : 0,
         label: e.status === 'DROPPED' || managed ? wants : ''
       }
     };
@@ -335,7 +278,7 @@
     }
     const wantedEdges = new Map();
     for (const e of view.edges) {
-      const data = edgeElement(e);
+      const data = edgeElement(e, ctx);
       wantedEdges.set(data.data.id, data);
     }
 
@@ -542,6 +485,84 @@
   function applySelection() {
     cy.nodes('.selected').removeClass('selected');
     if (state.selected) cy.getElementById(state.selected).addClass('selected');
+    cy.nodes('.kb-focus').removeClass('kb-focus');
+    if (state.focused) cy.getElementById(state.focused).addClass('kb-focus');
+    cy.elements('.on-revealed-path').removeClass('on-revealed-path');
+    const path = state.revealedPath;
+    if (!path) return;
+    for (let i = 0; i < path.length; i++) {
+      cy.getElementById(path[i]).addClass('on-revealed-path');
+      if (i) cy.getElementById(path[i - 1] + '\u0000' + path[i]).addClass('on-revealed-path');
+    }
+  }
+
+  function announce(text) {
+    if (el.live) el.live.textContent = text;
+  }
+
+  /** Moves the keyboard focus ring, keeps the node in view and announces it to screen readers. */
+  function focusNode(id) {
+    if (!id) return;
+    const node = cy.getElementById(id);
+    if (node.empty()) return;
+    state.focused = id;
+    applySelection();
+    const pos = node.renderedPosition();
+    if (pos.x < 0 || pos.y < 0 || pos.x > cy.width() || pos.y > cy.height()) cy.center(node);
+    paintBadges(badgeCounts);
+    const n = model.nodesById.get(id);
+    const label = n ? (n.artifactId + (n.version ? ' ' + n.version : '')) : id;
+    const hasChildren = (model.outEdges.get(id) || []).some(function (e) {
+      return M.edgeEnabled(e, state.scopes);
+    });
+    const open = state.expanded.has(id) && !state.hidden.has(id);
+    announce(label + (hasChildren ? (open ? ', expanded' : ', collapsed') : ', no dependencies'));
+  }
+
+  function firstFocusable() {
+    const modules = cy.nodes('[kind = "module"]');
+    const pool = modules.length ? modules : cy.nodes();
+    return pool.length ? pool.map(function (n) { return n.id(); }).sort()[0] : null;
+  }
+
+  function sortedIds(collection) {
+    return collection.map(function (n) { return n.id(); }).sort();
+  }
+
+  function siblingIds(id) {
+    const parents = cy.getElementById(id).incomers('node');
+    return sortedIds(parents.length ? parents[0].outgoers('node') : cy.nodes('[kind = "module"]'));
+  }
+
+  /** Arrow keys walk the drawn graph: down to a child, up to a parent, left/right between siblings. */
+  function moveFocus(key) {
+    const current = state.focused && !cy.getElementById(state.focused).empty() ? state.focused : null;
+    if (!current) {
+      focusNode(firstFocusable());
+      return;
+    }
+    let next = null;
+    if (key === 'ArrowDown') next = sortedIds(cy.getElementById(current).outgoers('node'))[0];
+    else if (key === 'ArrowUp') next = sortedIds(cy.getElementById(current).incomers('node'))[0];
+    else {
+      const group = siblingIds(current);
+      if (group.length) {
+        const at = Math.max(group.indexOf(current), 0);
+        next = group[(at + (key === 'ArrowRight' ? 1 : group.length - 1)) % group.length];
+      }
+    }
+    if (next) focusNode(next);
+  }
+
+  function toggleExpansion(id) {
+    state.revealedPath = null;
+    if (state.expanded.has(id)) state.expanded.delete(id);
+    else state.expanded.add(id);
+    const done = function () {
+      select(id);
+      focusNode(id);
+    };
+    if (render(false, done)) done();
   }
 
   function select(nodeId) {
@@ -577,6 +598,9 @@
     if (path) {
       for (let i = 0; i < path.length - 1; i++) state.expanded.add(path[i]);
     }
+    // The spec asks search to expand *and highlight* the path it took, so the route stays readable
+    // once the node is on screen.
+    state.revealedPath = path && path.length > 1 ? path : null;
     // Only select once the node is really on the canvas: the draw can be deferred by the guard, and
     // a node that no enabled scope reaches stays invisible even after a successful draw.
     const done = function () {
@@ -676,7 +700,8 @@
       line.appendChild(version);
       line.appendChild(elt('span', 'muted', 'via ' + row.parent));
       body.appendChild(line);
-      if (row.modules.size > 1) {
+      // The module matters as soon as the build has more than one, even for a single occurrence.
+      if (row.modules.size && model.modules.length > 1) {
         const names = Array.from(row.modules).map(artifactIdOf).sort();
         body.appendChild(elt('div', 'muted modules', names.join(', ')));
       }
@@ -802,19 +827,19 @@
     if (first) first.focus();
   }
 
-  function openMenuForSelection() {
-    if (!state.selected) return;
-    const node = cy.getElementById(state.selected);
+  function openMenuForNode(nodeId) {
+    if (!nodeId) return;
+    const node = cy.getElementById(nodeId);
     if (node.empty()) return;
     const box = el.cy.getBoundingClientRect();
     const pos = node.renderedPosition();
-    openMenu(state.selected, box.left + pos.x, box.top + pos.y);
+    openMenu(nodeId, box.left + pos.x, box.top + pos.y);
   }
 
   el.menu.addEventListener('keydown', function (ev) {
     const items = menuItems();
     const index = items.indexOf(document.activeElement);
-    if (ev.key === 'Escape') {
+    if (ev.key === 'Escape' || ev.key === 'Tab') {
       ev.preventDefault();
       closeMenu(true);
     } else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
@@ -822,6 +847,10 @@
       const step = ev.key === 'ArrowDown' ? 1 : items.length - 1;
       items[(Math.max(index, 0) + step) % items.length].focus();
     }
+  });
+
+  el.menu.addEventListener('focusout', function (ev) {
+    if (!el.menu.hidden && !el.menu.contains(ev.relatedTarget)) closeMenu(false);
   });
 
   function filterChips() {
@@ -974,7 +1003,9 @@
       { selector: 'node[managed = 1]', style: { 'border-color': MANAGED, 'border-width': 2, 'background-color': palette.managedFill, 'color': palette.managedText } },
       { selector: 'node[dropped = 1]', style: { 'border-color': CONFLICT, 'border-width': 2.5 } },
       { selector: 'node[dim = 1]', style: { 'opacity': 0.25 } },
+      { selector: 'node.on-revealed-path', style: { 'underlay-color': palette.module, 'underlay-opacity': 0.35, 'underlay-padding': 5, 'opacity': 1 } },
       { selector: 'node.selected', style: { 'outline-color': '#22C55E', 'outline-width': 3, 'outline-opacity': 1, 'outline-offset': 2 } },
+      { selector: 'node.kb-focus', style: { 'overlay-color': palette.text, 'overlay-opacity': 0.22, 'overlay-padding': 5 } },
       {
         selector: 'edge',
         style: {
@@ -994,6 +1025,8 @@
         }
       },
       { selector: 'edge[optional = 1]', style: { 'line-style': 'dotted' } },
+      { selector: 'edge[dim = 1]', style: { 'opacity': 0.2 } },
+      { selector: 'edge.on-revealed-path', style: { 'line-color': palette.module, 'target-arrow-color': palette.module, 'width': 2.6, 'opacity': 1 } },
       { selector: 'edge[managed = 1]', style: { 'line-style': 'dashed', 'line-color': MANAGED, 'target-arrow-color': MANAGED, 'color': palette.managedLabel, 'text-background-opacity': 1 } },
       { selector: 'edge[status = "DROPPED"]', style: { 'line-style': 'dashed', 'line-color': CONFLICT, 'target-arrow-color': CONFLICT, 'color': palette.conflictLabel, 'text-background-opacity': 1 } }
     ];
@@ -1065,6 +1098,7 @@
       button.addEventListener('click', function () {
         if (state.scopes.has(scope)) state.scopes.delete(scope);
         else state.scopes.add(scope);
+        state.revealedPath = null;
         syncTopbar();
         render();
       });
@@ -1136,14 +1170,13 @@
     cy.on('tap', 'node', function (ev) {
       const id = ev.target.id();
       closeMenu(false);
-      if (state.expanded.has(id)) state.expanded.delete(id);
-      else state.expanded.add(id);
-      const done = function () { select(id); };
-      if (render(false, done)) done();
+      state.focused = id;
+      toggleExpansion(id);
     });
     cy.on('cxttap', 'node', function (ev) {
       const id = ev.target.id();
       select(id);
+      state.focused = id;
       const ori = ev.originalEvent || {};
       openMenu(id, ori.clientX || 0, ori.clientY || 0);
     });
@@ -1152,12 +1185,35 @@
     el.cy.tabIndex = 0;
     el.cy.setAttribute('role', 'application');
     el.cy.setAttribute('aria-label', 'Dependency graph');
+    el.cy.setAttribute('aria-keyshortcuts', 'ArrowUp ArrowDown ArrowLeft ArrowRight Enter Shift+F10');
+    el.cy.setAttribute('aria-describedby', 'cy-help');
     el.cy.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
+    el.cy.addEventListener('focus', function () {
+      if (!state.focused || cy.getElementById(state.focused).empty()) focusNode(firstFocusable());
+    });
+    el.cy.addEventListener('keydown', function (ev) {
+      if (ev.key === 'ArrowUp' || ev.key === 'ArrowDown' || ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
+        ev.preventDefault();
+        moveFocus(ev.key);
+      } else if (ev.key === 'Enter' || ev.key === ' ' || ev.key === 'Spacebar') {
+        ev.preventDefault();
+        if (state.focused) toggleExpansion(state.focused);
+      } else if (ev.key === 'Escape' && el.menu.hidden && state.selected) {
+        ev.preventDefault();
+        state.selected = null;
+        state.revealedPath = null;
+        applySelection();
+        renderPanel(null);
+      }
+    });
     document.addEventListener('keydown', function (ev) {
       if (ev.key === 'ContextMenu' || (ev.key === 'F10' && ev.shiftKey)) {
-        if (!el.menu.hidden || !state.selected) return;
+        // Only from the canvas itself, and never over the modal warning or an open menu.
+        if (!el.menu.hidden || !el.warning.hidden || ev.target !== el.cy) return;
+        const target = state.focused || state.selected;
+        if (!target) return;
         ev.preventDefault();
-        openMenuForSelection();
+        openMenuForNode(target);
       } else if (ev.key === 'Escape' && !el.menu.hidden) {
         closeMenu(true);
       }
@@ -1168,7 +1224,9 @@
 
     depGraph.onSelect = renderPanel;
     initialExpansion();
+    const beforeRender = performance.now();
     render(true);
+    document.body.dataset.firstRenderMs = String(Math.round(performance.now() - beforeRender));
     clampInitialView();
   }
 
@@ -1180,6 +1238,7 @@
   try {
     init();
     document.body.dataset.ready = 'true';
+    document.body.dataset.readyMs = String(Math.round(performance.now()));
   } catch (err) {
     document.body.dataset.error = String((err && err.message) || err);
     el.filterBar.textContent = 'Failed to render the dependency graph: ' + document.body.dataset.error;
