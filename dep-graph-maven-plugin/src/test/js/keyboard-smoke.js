@@ -117,7 +117,9 @@ async function target() {
   await key('ArrowUp');
   await sleep(200);
   const up = await evaluate("document.getElementById('a11y-live').textContent");
-  check('ArrowUp moves back', /^(service-0|a) /.test(up) || up === first, up);
+  // Compare the node only: the announcement's state part changes once Enter has expanded it.
+  const nodeOf = function (text) { return String(text).split(',')[0]; };
+  check('ArrowUp moves back', nodeOf(up) === nodeOf(first), up);
 
   await key('Enter');
   await sleep(600);

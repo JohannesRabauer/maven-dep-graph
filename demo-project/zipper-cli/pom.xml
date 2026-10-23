@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>dev.rabauer</groupId>
+        <artifactId>dep-graph-demo</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>zipper-cli</artifactId>
+
+    <name>Zipper CLI</name>
+    <description>Command line front end: zips the files given as arguments.</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>dev.rabauer</groupId>
+            <artifactId>zipper-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>commons-cli</groupId>
+            <artifactId>commons-cli</artifactId>
+            <version>1.9.0</version>
+        </dependency>
+        <!-- Declared here to get a newer commons-compress than zipper-core asks for. The nearer
+             declaration wins, so zipper-core's 1.26.2 is dropped in this module (a conflict), and the
+             CLI ends up on other commons-compress and commons-io versions than the web app (drift). -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-compress</artifactId>
+            <version>1.27.1</version>
+        </dependency>
+    </dependencies>
+</project>

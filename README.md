@@ -111,7 +111,7 @@ not part of the reactor; the last project to build writes the page instead, stil
 | Folder | What it is |
 |---|---|
 | `dep-graph-maven-plugin/` | The plugin (goal `dep-graph:graph`) |
-| `demo-project/` | "Zipper", a small Spring Boot app that uses the plugin the way any other project would, from the local Maven repository |
+| `demo-project/` | "Zipper", a small multi-module build (`zipper-core`, `zipper-web`, `zipper-cli`) that uses the plugin the way any other project would, from the local Maven repository. Its modules disagree about library versions on purpose, so the page shows every feature: conflicts, `dependencyManagement` pins, version drift and outdated releases |
 | `site/` | The static project website; the Pages workflow adds the two live demo pages |
 
 ```bash
@@ -120,7 +120,7 @@ node --test dep-graph-maven-plugin/src/test/js/graph-model.test.js
 mvn -f demo-project/pom.xml package               # writes demo-project/target/dep-graph.html
 ```
 
-`mvn -f demo-project/pom.xml spring-boot:run` starts the demo app on http://localhost:8080.
+After `package`, `java -jar demo-project/zipper-web/target/zipper-web-0.1.0-SNAPSHOT.jar` starts the demo web app on http://localhost:8080.
 
 ### Releasing (maintainers)
 

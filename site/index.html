@@ -56,7 +56,7 @@
           <img src="assets/hero-dark.png" width="1440" height="640"
                alt="The generated page: a Spring Boot app's dependency graph. commons-io 2.19.0 is outlined in red because commons-compress wanted 2.16.1; the side panel explains 'Nearest wins', says 'Update available: 2.19.0 → 2.22.0', and lists both requested versions and both paths from the root. slf4j-api is outlined in violet because Spring Boot manages its version, cyan arrows mark artifacts with newer releases, and a legend explains every marker.">
         </picture></a>
-        <figcaption>The generated page for the demo app. <a href="demo/">Try it yourself</a>: click the red <strong>1 conflict</strong> badge.</figcaption>
+        <figcaption>The generated page for the demo app. <a href="demo/">Try it yourself</a>: click the red <strong>3 conflicts</strong> badge.</figcaption>
       </figure>
     </div>
   </section>
@@ -181,8 +181,8 @@
       <div class="demo-grid">
         <a class="demo-card" href="demo/">
           <span class="tag">79 artifacts</span>
-          <h3>Spring Boot demo app →</h3>
-          <p>A small upload-and-zip web app built on Spring Boot 4, Tika and commons-compress. It has one real conflict on <code>commons-io</code> and six versions managed by the Spring Boot BOM.</p>
+          <h3>Multi-module demo app →</h3>
+          <p>"Zipper": a core library, a Spring Boot 4 web app and a command line tool. The modules disagree on purpose: three conflicts, versions pinned by the Spring Boot BOM and by the web module itself, and <code>commons-io</code> drifting across three versions. Turn on <strong>Version drift</strong> to see it.</p>
         </a>
         <a class="demo-card" href="stress/">
           <span class="tag">300 modules · 4,760 artifacts</span>

@@ -16,17 +16,19 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import dev.rabauer.demo.core.Zipper;
+
 @Controller
 public class ZipController
 {
-    private final ZipService zipService;
+    private final Zipper zipper;
     private final DataSize maxRequestSize;
 
     public ZipController(
-        final ZipService zipService,
+        final Zipper zipper,
         @Value("${spring.servlet.multipart.max-request-size}") final DataSize maxRequestSize)
     {
-        this.zipService = zipService;
+        this.zipper = zipper;
         this.maxRequestSize = maxRequestSize;
     }
 
@@ -50,6 +52,13 @@ public class ZipController
         return ResponseEntity.ok()
             .contentType(MediaType.parseMediaType("application/zip"))
             .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(fileName).build().toString())
-            .body(out -> this.zipService.zip(files, out));
+            .body(out -> this.zipper.zip(entries(files), out));
+    }
+
+    private static List<Zipper.Entry> entries(final List<MultipartFile> files)
+    {
+        return files.stream()
+            .map(file -> new Zipper.Entry(file.getOriginalFilename(), file::getInputStream))
+            .toList();
     }
 }

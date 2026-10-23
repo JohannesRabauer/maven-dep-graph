@@ -574,8 +574,10 @@
 
   function firstFocusable() {
     const modules = cy.nodes('[kind = "module"]');
-    const pool = modules.length ? modules : cy.nodes();
-    return pool.length ? pool.map(function (n) { return n.id(); }).sort()[0] : null;
+    // Skip an aggregator pom without dependencies: the arrow keys would have nowhere to go from it.
+    const withDeps = modules.filter(function (n) { return n.outgoers('node').length > 0; });
+    const pool = withDeps.length ? withDeps : modules.length ? modules : cy.nodes();
+    return pool.length ? sortedIds(pool)[0] : null;
   }
 
   function sortedIds(collection) {

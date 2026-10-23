@@ -14,49 +14,39 @@
     <groupId>dev.rabauer</groupId>
     <artifactId>dep-graph-demo</artifactId>
     <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
 
     <name>Dependency Graph Demo</name>
-    <description>Small drag-and-drop zip web app that uses the dep-graph-maven-plugin.</description>
+    <description>
+        "Zipper", a small multi-module build that uses the dep-graph-maven-plugin. Its modules disagree about
+        a few library versions on purpose, so the generated page has something to show for every feature:
+        version conflicts, dependencyManagement pins, version drift between modules and outdated releases.
+    </description>
+
+    <modules>
+        <module>zipper-core</module>
+        <module>zipper-web</module>
+        <module>zipper-cli</module>
+    </modules>
 
     <properties>
         <java.version>21</java.version>
     </properties>
 
-    <dependencies>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webmvc</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-thymeleaf</artifactId>
-        </dependency>
-        <!-- Typical upload-handling libraries. They disagree about commons-io, which gives the
-             dependency graph a real conflict to explain, and Spring Boot manages commons-codec
-             and commons-lang3 for them. -->
-        <dependency>
-            <groupId>org.apache.tika</groupId>
-            <artifactId>tika-core</artifactId>
-            <version>3.2.1</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-compress</artifactId>
-            <version>1.26.2</version>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>dev.rabauer</groupId>
+                <artifactId>zipper-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <build>
         <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
+            <!-- Inherited by every module, but the plugin writes a single page for the whole reactor:
+                 target/dep-graph.html next to this pom. -->
             <plugin>
                 <groupId>dev.rabauer</groupId>
                 <artifactId>dep-graph-maven-plugin</artifactId>
