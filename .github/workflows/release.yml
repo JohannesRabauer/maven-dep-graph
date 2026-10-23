@@ -1,0 +1,65 @@
+name: Release
+
+# Push a tag like v0.1.0 to publish dev.rabauer:dep-graph-maven-plugin:0.1.0
+# to Maven Central and create a matching GitHub Release.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_TOKEN
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      - name: Derive version from tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag '$GITHUB_REF_NAME' is not a release version (expected vX.Y.Z)" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Set project version
+        run: >
+          mvn -B -ntp -f dep-graph-maven-plugin/pom.xml
+          versions:set -DnewVersion=${{ steps.version.outputs.version }}
+          -DgenerateBackupPoms=false
+
+      - name: Verify, sign and publish to Maven Central
+        run: mvn -B -ntp -f dep-graph-maven-plugin/pom.xml -Prelease deploy
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V='${{ steps.version.outputs.version }}'
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            dep-graph-maven-plugin/target/dep-graph-maven-plugin-$V.jar \
+            dep-graph-maven-plugin/target/dep-graph-maven-plugin-$V-sources.jar
