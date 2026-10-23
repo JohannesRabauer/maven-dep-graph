@@ -19,7 +19,7 @@ public final class VersionClassifier {
     private static final Pattern PRE_RELEASE =
             Pattern.compile("(?i)[._-]?(?<![a-z])(" + UNSTABLE_TOKENS + ")([._-]?\\d+)?(?![a-z])");
     private static final Pattern NUMERIC_PREFIX = Pattern.compile("^v?\\d+(\\.\\d+)*");
-    private static final Pattern NO_VARIANT = Pattern.compile("[.-](final|release|ga)|[.-]v?\\d+");
+    private static final Pattern NO_VARIANT = Pattern.compile("[.-](final|release|ga)|([.-]v?\\d+)+");
 
     private VersionClassifier() {
     }
