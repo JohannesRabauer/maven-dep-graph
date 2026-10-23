@@ -155,7 +155,7 @@ public class DepGraphMojo extends AbstractMojo
         return basedir != null && basedir.toPath().toAbsolutePath().normalize().equals(executionRoot);
     }
 
-    private List<GraphModel.Node> withLatest(final Map<String, GraphModel.Node> collected)
+    List<GraphModel.Node> withLatest(final Map<String, GraphModel.Node> collected)
     {
         if(!this.checkLatest)
         {
@@ -171,12 +171,23 @@ public class DepGraphMojo extends AbstractMojo
             }
         }
 
+        // The resolver calls back on this thread, so a plain counter is enough.
+        final int[] failed = {0};
         final Map<String, List<String>> latest = new LatestVersionResolver(
             this.repositorySystem,
             this.session.getRepositorySession(),
             this.project.getRemoteProjectRepositories(),
             LATEST_LOOKUP_THREADS,
-            (ga, cause) -> {}).resolve(groupArtifacts);
+            (ga, cause) ->
+            {
+                failed[0]++;
+                this.getLog().debug("Latest version lookup failed for " + ga, cause);
+            }).resolve(groupArtifacts);
+        if(failed[0] > 0)
+        {
+            this.getLog().warn("Latest version unknown for " + failed[0]
+                + " artifact(s) (network/repository errors); run with -X for details");
+        }
 
         final List<GraphModel.Node> nodes = new ArrayList<>(collected.size());
         for(final GraphModel.Node node : collected.values())
