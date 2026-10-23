@@ -2,9 +2,14 @@ package dev.rabauer.depgraph.latest;
 
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.metadata.DefaultMetadata;
+import org.eclipse.aether.metadata.Metadata;
+import org.eclipse.aether.repository.RemoteRepository;
 import org.eclipse.aether.resolution.VersionRangeRequest;
 import org.eclipse.aether.resolution.VersionRangeResolutionException;
 import org.eclipse.aether.resolution.VersionRangeResult;
+import org.eclipse.aether.transfer.MetadataNotFoundException;
+import org.eclipse.aether.transfer.MetadataTransferException;
 import org.eclipse.aether.util.version.GenericVersionScheme;
 import org.eclipse.aether.version.Version;
 import org.junit.jupiter.api.Test;
@@ -24,6 +29,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LatestVersionResolverTest {
 
+    private static final RemoteRepository REPO =
+            new RemoteRepository.Builder("central", "default", "https://repo.example").build();
+
     private final AtomicInteger calls = new AtomicInteger();
     private final Map<String, Throwable> failures = new HashMap<>();
 
@@ -39,7 +47,14 @@ class LatestVersionResolverTest {
                     if (request.getArtifact().getArtifactId().equals("bad")) {
                         throw new VersionRangeResolutionException(result);
                     }
+                    Metadata metadata = new DefaultMetadata("g", request.getArtifact().getArtifactId(),
+                            "maven-metadata.xml", Metadata.Nature.RELEASE_OR_SNAPSHOT);
                     if (request.getArtifact().getArtifactId().equals("missing")) {
+                        result.addException(new MetadataNotFoundException(metadata, REPO));
+                        return result;
+                    }
+                    if (request.getArtifact().getArtifactId().equals("down")) {
+                        result.addException(new MetadataTransferException(metadata, REPO, "connection refused"));
                         return result;
                     }
                     GenericVersionScheme scheme = new GenericVersionScheme();
@@ -84,5 +99,15 @@ class LatestVersionResolverTest {
                 .resolve(Set.of("g:missing"));
         assertEquals(List.of(), result.get("g:missing"));
         assertTrue(failures.isEmpty());
+    }
+
+    @Test
+    void transferErrorInResultIsAFailure() {
+        Map<String, List<String>> result = new LatestVersionResolver(
+                stub(), new DefaultRepositorySystemSession(), List.of(), 2, failures::put)
+                .resolve(Set.of("g:down", "g:missing"));
+        assertNull(result.get("g:down"));
+        assertEquals(Set.of("g:down"), failures.keySet());
+        assertInstanceOf(MetadataTransferException.class, failures.get("g:down"));
     }
 }

@@ -6,6 +6,7 @@ import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.aether.repository.RemoteRepository;
 import org.eclipse.aether.resolution.VersionRangeRequest;
 import org.eclipse.aether.resolution.VersionRangeResult;
+import org.eclipse.aether.transfer.MetadataNotFoundException;
 import org.eclipse.aether.version.Version;
 
 import java.util.HashMap;
@@ -79,6 +80,12 @@ public final class LatestVersionResolver {
         String a = ga.substring(colon + 1);
         VersionRangeRequest request = new VersionRangeRequest(new DefaultArtifact(g, a, "jar", "[0,)"), repos, null);
         VersionRangeResult range = system.resolveVersionRange(session, request);
+        // Maven records repository errors on the result instead of throwing; "not found" is not an error.
+        for (Exception e : range.getExceptions()) {
+            if (!(e instanceof MetadataNotFoundException)) {
+                throw e;
+            }
+        }
         return range.getVersions().stream()
                 .map(Version::toString)
                 .filter(VersionClassifier::isStable)
