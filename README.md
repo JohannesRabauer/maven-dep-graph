@@ -56,17 +56,17 @@ The `graph` goal runs in the `package` phase. Requirements: Java 21+ and Maven 3
 |---|---|
 | 🟥 **Conflicts** | When nearest-wins drops a requested version, the winner gets a red outline and the losing edge is dashed and labelled `wants 2.16.1`. A red badge counts the conflicts; click it to step through each one. Red is used for nothing else. |
 | 🟪 **Managed versions** | A version pinned by `dependencyManagement` (a BOM or parent) gets a violet outline, and the panel names the BOM. These pins are usually deliberate, so they are kept separate from conflicts and have their own toggle. |
-| 🔵 **Newer releases** | A cyan dot marks artifacts that have a newer release. The panel shows the latest release in the same major version and the latest overall. |
+| 🔵 **Newer releases** | A cyan ↑ marker flags artifacts with a newer release in the same major version. The panel says **Update available** and shows the upgrade (`4.1.1 → 4.1.2`), plus the latest release overall if a new major exists. |
 | 🟩 **Modules** | A multi-module build gets one page for the whole reactor, starting from a module overview. A library shared by several modules appears once, with an edge from each module that uses it. |
 
-The page starts small: your modules and their direct dependencies. A grey `+N` pill under a node shows how many dependencies it still hides. Click the node to expand it, use **Expand all** to show the whole graph, or **Collapse all** to go back to the start.
+The page starts small: your modules and their direct dependencies. A legend in the corner explains every colour and marker. A grey `+N` pill under a node shows how many dependencies it still hides. Click the node to expand it, use **Expand all** to show the whole graph, or **Collapse all** to go back to the start.
 
 Clicking a node also opens its panel:
 
 - **Why this version:** nearest wins or managed, or both.
 - **Requested versions:** every requested version with the path that requested it; dropped versions are struck through.
 - **Paths from root:** every path from a module down to the artifact.
-- **Latest version:** the newest release in the same major and overall.
+- **Latest version:** whether an update is available, with the version in use next to the newest release in the same major and overall.
 
 Also on the page:
 

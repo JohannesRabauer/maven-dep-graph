@@ -40,7 +40,8 @@
 
   const WARNING_ICON = icon('<path d="M7 1.5 13 12.5H1Z" fill="' + CONFLICT + '"/><path d="M6.3 5h1.4v4H6.3zM6.3 9.9h1.4v1.4H6.3z" fill="#0F172A"/>');
   const DIAMOND_ICON = icon('<path d="M7 1 13 7 7 13 1 7Z" fill="' + MANAGED + '"/>');
-  const NEWER_DOT = icon('<circle cx="7" cy="7" r="6" fill="' + NEWER + '"/>');
+  // The arrow keeps "newer release" readable without relying on the cyan alone.
+  const NEWER_DOT = icon('<circle cx="7" cy="7" r="6.5" fill="' + NEWER + '"/><path d="M7 2.6 10.6 6.4H8.1v4.6H5.9V6.4H3.4Z" fill="#0F172A"/>');
   const DRIFT_DOT = icon('<circle cx="7" cy="7" r="6" fill="' + DRIFT + '"/>');
 
   const lightScheme = globalThis.matchMedia
@@ -61,6 +62,7 @@
     filterBar: document.getElementById('filter-bar'),
     cy: document.getElementById('cy'),
     badges: document.getElementById('badges'),
+    legendItems: document.getElementById('legend-items'),
     panel: document.getElementById('panel'),
     menu: document.getElementById('context-menu'),
     live: document.getElementById('a11y-live'),
@@ -665,6 +667,9 @@
     else if (dropped) meta.appendChild(elt('span', 'pill pill-conflict', 'conflict'));
     else if (managed) meta.appendChild(elt('span', 'pill pill-managed', 'managed'));
     else meta.appendChild(elt('span', 'pill', 'kept'));
+    if (node && node.latest && node.latest.newerInSameMajor) {
+      meta.appendChild(elt('span', 'pill pill-newer', '\u2191 update available'));
+    }
     const scopes = Array.from(new Set(ins.map(function (e) { return e.scope || 'compile'; }))).sort();
     if (scopes.length) meta.appendChild(elt('span', 'muted', scopes.join(', ')));
     if (ins.some(function (e) { return e.optional; })) meta.appendChild(elt('span', 'muted', 'optional'));
@@ -745,9 +750,44 @@
       body.appendChild(elt('div', 'muted', 'not checked'));
       return;
     }
-    const major = String(node.version || '').split('.')[0];
-    body.appendChild(elt('div', 'mono', 'latest ' + major + '.x: ' + (latest.latestSameMajor || 'none')));
-    body.appendChild(elt('div', 'mono', 'latest overall: ' + (latest.latestOverall || 'none')));
+    const current = node.version || '';
+    const major = majorOf(current);
+    const majorLabel = (major == null ? String(current).split('.')[0] : major) + '.x';
+    const overallMajor = majorOf(latest.latestOverall);
+    const newMajor = major != null && overallMajor != null && overallMajor > major;
+
+    const status = elt('div', 'latest-status');
+    if (latest.newerInSameMajor) {
+      status.classList.add('latest-outdated');
+      status.appendChild(elt('strong', null, '\u2191 Update available'));
+      status.appendChild(elt('span', 'mono', current + ' \u2192 ' + latest.latestSameMajor));
+      status.appendChild(elt('span', 'muted', 'Same major version, usually a drop-in upgrade.'));
+    } else {
+      status.classList.add('latest-current');
+      status.appendChild(elt('strong', null, '\u2713 Latest ' + majorLabel + ' release'));
+      if (newMajor) status.appendChild(elt('span', 'muted', 'A newer major version exists; it may need code changes.'));
+    }
+    body.appendChild(status);
+
+    const table = elt('dl', 'latest-table');
+    function row(label, value, cls, tag) {
+      table.appendChild(elt('dt', 'muted', label));
+      const dd = elt('dd', 'mono' + (cls ? ' ' + cls : ''), value || 'none');
+      if (tag) dd.appendChild(elt('span', 'tag', tag));
+      table.appendChild(dd);
+    }
+    row('In use', current, latest.newerInSameMajor ? 'version-old' : null);
+    row('Latest ' + majorLabel, latest.latestSameMajor, latest.newerInSameMajor ? 'version-new' : null,
+      latest.newerInSameMajor ? 'newer' : null);
+    if (latest.latestOverall && latest.latestOverall !== latest.latestSameMajor) {
+      row('Latest overall', latest.latestOverall, null, newMajor ? 'new major' : null);
+    }
+    body.appendChild(table);
+  }
+
+  function majorOf(version) {
+    const match = /^(\d+)/.exec(String(version || ''));
+    return match ? Number(match[1]) : null;
   }
 
   function driftSection(panel, node) {
@@ -772,9 +812,9 @@
     const ins = enabledIn(id);
     el.panel.appendChild(panelHead(id, node, ins));
     whySection(el.panel, ins);
+    latestSection(el.panel, node);
     requestedSection(el.panel, node, ins);
     pathsSection(el.panel, id);
-    latestSection(el.panel, node);
     driftSection(el.panel, node);
     el.panel.hidden = false;
   }
@@ -1194,8 +1234,36 @@
   };
   globalThis.depGraph = depGraph;
 
+  /** Explains every visual mark on the canvas, so no colour or icon has to be guessed. */
+  function buildLegend() {
+    const list = el.legendItems;
+    if (!list) return;
+    function item(key, label) {
+      const li = elt('li');
+      li.appendChild(key);
+      li.appendChild(elt('span', null, label));
+      list.appendChild(li);
+    }
+    function img(src) {
+      const image = elt('img', 'key-icon');
+      image.src = src;
+      image.alt = '';
+      return image;
+    }
+    let outdated = 0;
+    for (const n of model.nodesById.values()) if (n.latest && n.latest.newerInSameMajor) outdated++;
+    item(elt('span', 'key key-module'), 'Module of this build');
+    item(elt('span', 'key key-conflict'), 'Version conflict: a requested version was dropped');
+    item(elt('span', 'key key-managed'), 'Version pinned by dependencyManagement');
+    item(img(NEWER_DOT), 'Newer release available' + (outdated ? ' (' + outdated + ' artifacts)' : ''));
+    if (model.modules.length > 1) item(img(DRIFT_DOT), 'Version differs between modules (Drift on)');
+    item(elt('span', 'badge', '1'), 'Conflicts hidden below a closed node');
+    item(elt('span', 'badge more', '+N'), 'Dependencies hidden below; click to expand');
+  }
+
   function init() {
     buildTopbar();
+    buildLegend();
     cy = cytoscape({
       container: el.cy,
       elements: [],
