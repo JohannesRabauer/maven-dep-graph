@@ -29,6 +29,11 @@
             <name>Johannes Rabauer</name>
             <url>https://github.com/JohannesRabauer</url>
         </developer>
+        <developer>
+            <id>asm0dey</id>
+            <name>Pasha Finkelshteyn</name>
+            <url>https://github.com/asm0dey</url>
+        </developer>
     </developers>
 
     <scm>

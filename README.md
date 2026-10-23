@@ -130,12 +130,20 @@ repository secrets:
 - `GPG_PRIVATE_KEY`: an ASCII-armored secret key without a passphrase, whose public key is on
   `keyserver.ubuntu.com`
 
+## Built live on stream
+
+This repository was created from scratch in the JUG Oberpfalz live coding session
+*"From Design to Spec to Code: Building a Real UI With AI Agents"* by
+[Johannes Rabauer](https://github.com/JohannesRabauer) and
+[Pasha Finkelshteyn](https://github.com/asm0dey).
+
+<a href="https://youtube.com/live/mufzjT87pmI">
+  <img src="site/assets/livestream.jpg" width="480" alt="Watch the live coding session on YouTube">
+</a>
+
+▶ [Watch the recording on YouTube](https://youtube.com/live/mufzjT87pmI)
+
 ## License
 
 [Apache License 2.0](LICENSE). The page bundles Cytoscape.js, dagre and cytoscape-dagre (all MIT);
 see [THIRD-PARTY-NOTICES.md](dep-graph-maven-plugin/THIRD-PARTY-NOTICES.md).
-
----
-
-Started live with Pasha Finkelshteyn at the JUG Oberpfalz live coding session
-"From Design to Spec to Code: Building a Real UI With AI Agents".
