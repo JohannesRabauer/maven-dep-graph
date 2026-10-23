@@ -451,6 +451,8 @@
   let badgeCounts = new Map();
   let childCounts = new Map();
   let focusing = false;
+  // The node a tap just opened or closed; it stays where the reader clicked instead of the view refitting.
+  let anchor = null;
 
   /**
    * Draws the current state. Returns false when the size guard deferred the draw, so callers can
@@ -469,12 +471,17 @@
       });
       return false;
     }
+    const anchorNode = anchor ? cy.getElementById(anchor) : cy.collection();
+    const anchorAt = anchorNode.nonempty() ? anchorNode.renderedPosition() : null;
     const structureChanged = diff(view);
     if (structureChanged) {
       // A reveal centres the node itself, so the fit is skipped there.
       const fit = !focusing;
       runLayout();
-      if (fit) {
+      if (anchorAt && anchorNode.inside()) {
+        const now = anchorNode.renderedPosition();
+        cy.panBy({ x: anchorAt.x - now.x, y: anchorAt.y - now.y });
+      } else if (fit) {
         cy.fit();
         if (cy.zoom() > MAX_FIT_ZOOM) {
           cy.zoom(MAX_FIT_ZOOM);
@@ -637,7 +644,10 @@
       select(id);
       focusNode(id);
     };
-    if (render(false, done)) done();
+    anchor = id;
+    const drawn = render(false, done);
+    anchor = null;
+    if (drawn) done();
   }
 
   function select(nodeId) {
