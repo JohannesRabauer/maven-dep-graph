@@ -31,13 +31,14 @@ public final class VersionClassifier {
         return !UNSTABLE.matcher(v).find();
     }
 
-    /** Leading digits of the version, "" if none. */
+    /** Leading digits of the version after an optional "v", "" if none. */
     public static String major(String v) {
-        int i = 0;
+        int start = v.startsWith("v") || v.startsWith("V") ? 1 : 0;
+        int i = start;
         while (i < v.length() && Character.isDigit(v.charAt(i))) {
             i++;
         }
-        return v.substring(0, i);
+        return v.substring(start, i);
     }
 
     /** Suffix family of a version; candidates of another variant are never offered as an update. */

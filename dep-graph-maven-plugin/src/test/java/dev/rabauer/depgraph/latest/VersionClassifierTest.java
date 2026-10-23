@@ -34,6 +34,17 @@ class VersionClassifierTest {
     }
 
     @Test
+    void majorSkipsVPrefix() {
+        assertEquals("1", VersionClassifier.major("v1.2"));
+        assertEquals("1", VersionClassifier.major("V1.2"));
+    }
+
+    @Test
+    void classifyVPrefixedNewMajorIsNotSameMajor() {
+        assertEquals(new Latest("v1.2", "v2.0", false), VersionClassifier.classify("v1.2", List.of("v1.2", "v2.0")));
+    }
+
+    @Test
     void classifyPicksSameMajorAndOverall() {
         assertEquals(new Latest("2.20.1", "3.0.2", true), VersionClassifier.classify("2.19.2", VERSIONS));
     }
