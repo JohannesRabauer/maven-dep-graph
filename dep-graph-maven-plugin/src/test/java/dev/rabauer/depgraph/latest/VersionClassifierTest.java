@@ -7,6 +7,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -142,6 +143,13 @@ class VersionClassifierTest {
         assertEquals("-jre", VersionClassifier.variant("1.2.3-jre-1"));
         assertEquals("-jdk11", VersionClassifier.variant("1.5.0-jdk11"));
         assertEquals("", VersionClassifier.variant("22-ea+11"));
+    }
+
+    @Test
+    void variantKeepsNumberAfterPlatformWord() {
+        assertEquals("-jdk-11", VersionClassifier.variant("1.0-jdk-11"));
+        assertNotEquals(VersionClassifier.variant("1.0-jdk-8"), VersionClassifier.variant("1.0-jdk-11"));
+        assertEquals("-jdk-11", VersionClassifier.variant("1.0-jdk-11-2"));
     }
 
     @Test

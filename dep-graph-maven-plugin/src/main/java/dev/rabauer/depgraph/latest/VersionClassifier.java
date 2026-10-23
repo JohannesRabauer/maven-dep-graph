@@ -7,6 +7,7 @@ import org.eclipse.aether.version.Version;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class VersionClassifier {
@@ -21,6 +22,8 @@ public final class VersionClassifier {
     private static final Pattern NUMERIC_PREFIX = Pattern.compile("^v?\\d+(\\.\\d+)*");
     // Counters that change with every release: "rev20240906" and "build217" are one variant, "-1.5.13" none.
     private static final Pattern COUNTER = Pattern.compile("(rev|build)\\d+");
+    // The number after a platform word names the line: "-jdk-11" and "-jdk-8" are different variants.
+    private static final Pattern PLATFORM_NUMBER = Pattern.compile("(jdk|java|jvm|scala|kotlin)[._-]?\\d+(\\.\\d+)*");
     private static final Pattern TRAILING_NUMBERS = Pattern.compile("([.+-]v?\\d+)+$");
     private static final Pattern NO_VARIANT = Pattern.compile("[.-](final|release|ga)");
 
@@ -46,7 +49,13 @@ public final class VersionClassifier {
         // A pre-release keeps its platform suffix: "33.0.0-jre-SNAPSHOT" belongs to "-jre".
         String release = PRE_RELEASE.matcher(v).replaceAll("");
         String rest = NUMERIC_PREFIX.matcher(release).replaceFirst("").toLowerCase(Locale.ROOT);
-        rest = TRAILING_NUMBERS.matcher(COUNTER.matcher(rest).replaceAll("$1")).replaceFirst("");
+        rest = COUNTER.matcher(rest).replaceAll("$1");
+        Matcher platform = PLATFORM_NUMBER.matcher(rest);
+        int keep = 0;
+        while (platform.find()) {
+            keep = platform.end();
+        }
+        rest = rest.substring(0, keep) + TRAILING_NUMBERS.matcher(rest.substring(keep)).replaceFirst("");
         return NO_VARIANT.matcher(rest).matches() ? "" : rest;
     }
 
