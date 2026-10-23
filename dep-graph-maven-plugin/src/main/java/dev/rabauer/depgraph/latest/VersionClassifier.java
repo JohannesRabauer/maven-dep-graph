@@ -25,7 +25,8 @@ public final class VersionClassifier {
     // The number after a platform word names the line: "-jdk-11" and "-jdk-8" are different variants.
     private static final Pattern PLATFORM_NUMBER = Pattern.compile("(jdk|java|jvm|scala|kotlin)[._-]?\\d+(\\.\\d+)*");
     private static final Pattern TRAILING_NUMBERS = Pattern.compile("([.+-]v?\\d+)+$");
-    private static final Pattern NO_VARIANT = Pattern.compile("[.-](final|release|ga)");
+    // Release markers, and Spring's "2.5.6.SEC03" security releases, which continue the plain line.
+    private static final Pattern NO_VARIANT = Pattern.compile("[.-](final|release|ga|sec\\d+)");
 
     private VersionClassifier() {
     }

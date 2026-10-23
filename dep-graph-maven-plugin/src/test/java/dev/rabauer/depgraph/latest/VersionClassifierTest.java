@@ -170,6 +170,13 @@ class VersionClassifierTest {
     }
 
     @Test
+    void classifyOffersSpringSecurityRelease() {
+        assertEquals("", VersionClassifier.variant("2.5.6.SEC02"));
+        assertEquals(new Latest("2.5.6.SEC03", "2.5.6.SEC03", true),
+                VersionClassifier.classify("2.5.6", List.of("2.5.5", "2.5.6", "2.5.6.SEC01", "2.5.6.SEC03")));
+    }
+
+    @Test
     void classifyNullIsNotChecked() {
         assertNull(VersionClassifier.classify("1.0", null));
     }
