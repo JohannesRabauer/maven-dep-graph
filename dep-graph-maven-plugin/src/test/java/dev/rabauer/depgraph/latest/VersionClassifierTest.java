@@ -115,6 +115,16 @@ class VersionClassifierTest {
     }
 
     @Test
+    void classifyKeepsByteBuddyJdk5LineApart() {
+        // Byte Buddy publishes every release since 1.18.6 twice: plain and -jdk5 (ascending, as Aether sorts them).
+        List<String> byteBuddy = List.of("1.18.6", "1.18.6-jdk5", "1.18.6-jdk6-jdk5", "1.18.15", "1.18.15-jdk5");
+        assertEquals(new Latest("1.18.15", "1.18.15", true), VersionClassifier.classify("1.18.6", byteBuddy));
+        assertEquals(new Latest("1.18.15-jdk5", "1.18.15-jdk5", true),
+                VersionClassifier.classify("1.18.6-jdk5", byteBuddy));
+        assertEquals(new Latest("1.18.15", "1.18.15", false), VersionClassifier.classify("1.18.15", byteBuddy));
+    }
+
+    @Test
     void classifyNullIsNotChecked() {
         assertNull(VersionClassifier.classify("1.0", null));
     }
