@@ -95,6 +95,8 @@ class VersionClassifierTest {
     @Test
     void classifyKeepsVPrefixedAndDatedVersionsInOneVariant() {
         assertEquals(new Latest("v1.3", "v1.3", true), VersionClassifier.classify("v1.2", List.of("v1.2", "v1.3")));
+        assertEquals(new Latest("V1.3-android", "V1.3-android", true),
+                VersionClassifier.classify("V1.2-android", List.of("V1.2-android", "V1.3-android")));
         assertEquals(new Latest("1.0.1.v20220101", "1.0.1.v20220101", true),
                 VersionClassifier.classify("1.0.0.v20210101", List.of("1.0.0.v20210101", "1.0.1.v20220101")));
     }
