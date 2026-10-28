@@ -16,7 +16,7 @@ works offline.
 <a href="https://johannesrabauer.github.io/maven-dep-graph/demo/">
   <picture>
     <source srcset="site/assets/hero-light.png" media="(prefers-color-scheme: light)">
-    <img src="site/assets/hero-dark.png" alt="The generated page: commons-io is outlined in red because commons-compress wanted 2.16.1 while tika-core's 2.19.0 won; the side panel explains why, lists both paths from the root and shows that 2.22.0 is the latest release.">
+    <img src="site/assets/hero-dark.png" alt="The four-module Zipper build's dependency graph, with three conflicts and ten managed versions. The side panel explains why commons-io 2.19.0 won over 2.16.1, lists both paths from zipper-core, and shows 2.22.0 as the latest release.">
   </picture>
 </a>
 
@@ -25,7 +25,7 @@ works offline.
 **Try it once**, without touching your POM:
 
 ```bash
-mvn dev.rabauer:dep-graph-maven-plugin:0.2.0:graph
+mvn dev.rabauer:dep-graph-maven-plugin:0.3.0:graph
 ```
 
 Then open `target/dep-graph.html`. In a multi-module build, put `package -DskipTests` before the
@@ -37,7 +37,7 @@ goal so the modules can resolve each other.
 <plugin>
     <groupId>dev.rabauer</groupId>
     <artifactId>dep-graph-maven-plugin</artifactId>
-    <version>0.2.0</version>
+    <version>0.3.0</version>
     <executions>
         <execution>
             <goals>
@@ -125,7 +125,7 @@ After `package`, `java -jar demo-project/zipper-web/target/zipper-web-0.1.0-SNAP
 
 ### Releasing (maintainers)
 
-Pushing a tag such as `v0.2.0` runs the [release workflow](.github/workflows/release.yml). It sets
+Pushing a tag such as `v0.3.0` runs the [release workflow](.github/workflows/release.yml). It sets
 the version from the tag, then builds, signs and publishes the plugin to Maven Central, and
 creates a GitHub Release. The POM on `main` stays on a `-SNAPSHOT` version. The workflow needs three
 repository secrets:
